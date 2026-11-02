@@ -106,7 +106,8 @@ local function find_offshore_pump_position(player, center_pos)
     return nil
 end
 
-storage.actions.place_entity = function(player_index, entity, direction, x, y, exact)
+storage.actions.place_entity = function(player_index, entity, direction, x, y, exact, underground_type)
+    -- underground_type: optional "input"/"output" for underground belts (blueprints need outputs)
     -- Ensure we have a valid character, recreating if necessary
     local player = storage.utils.ensure_valid_character(player_index)
     local position = {x = x, y = y}
@@ -174,6 +175,7 @@ storage.actions.place_entity = function(player_index, entity, direction, x, y, e
                 force = "player",
                 position = position,
                 direction = entity_direction,
+                type = underground_type,
             }
 
             if placed_entity then
@@ -271,6 +273,7 @@ storage.actions.place_entity = function(player_index, entity, direction, x, y, e
                         force = player.force,
                         position = new_position,
                         direction = entity_direction,
+                        type = underground_type,
                     }
                     if have_built then
                         player.remove_item{name = entity, count = 1}
@@ -372,6 +375,7 @@ storage.actions.place_entity = function(player_index, entity, direction, x, y, e
             force = player.force,
             position = position,
             direction = entity_direction,
+            type = underground_type,
         }
 
         if have_built then

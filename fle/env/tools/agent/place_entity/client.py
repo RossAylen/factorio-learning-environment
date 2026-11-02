@@ -22,6 +22,7 @@ class PlaceObject(Tool):
         direction: Direction = Direction.UP,
         position: Position = Position(x=0, y=0),
         exact: bool = True,
+        underground_type: str = None,
         # relative=False
     ) -> Entity:
         """
@@ -30,6 +31,7 @@ class PlaceObject(Tool):
         :param direction: Cardinal direction to place
         :param position: Position to place entity
         :param exact: If True, place entity at exact position, else place entity at nearest possible position
+        :param underground_type: For underground belts only: "input" or "output" (default input)
         :return: Entity object
         """
 
@@ -59,7 +61,7 @@ class PlaceObject(Tool):
         try:
             # If we are in `fast` mode, this is synchronous
             response, elapsed = self.execute(
-                self.player_index, name, factorio_direction, x, y, exact
+                self.player_index, name, factorio_direction, x, y, exact, underground_type
             )
         except Exception as e:
             try:
