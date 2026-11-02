@@ -552,6 +552,63 @@ local function is_valid_connection_point(surface, position)
     return not invalid_tiles[tile.name]
 end
 
+-- Space Age multi-fluid machines. Instead of hand-written offset tables (as used
+-- for chemical-plant / oil-refinery), their connection points come from the
+-- entity's real pipe connections, so every size/rotation/mirroring is correct.
+local generic_fluid_entities = {
+    ["foundry"] = true,
+    ["electromagnetic-plant"] = true,
+    ["cryogenic-plant"] = true,
+    ["biochamber"] = true,
+    ["fusion-reactor"] = true,
+    ["fusion-generator"] = true,
+    ["thruster"] = true,
+}
+
+-- The fluid a fluidbox is dedicated to: recipe filter, then locked fluid,
+-- then the prototype's fixed filter, then whatever it currently holds.
+local function fluidbox_fluid_name(fluidbox, i, fb_prototype)
+    local ok, filter = pcall(fluidbox.get_filter, i)
+    if ok and filter and filter.name then return filter.name end
+    local ok2, locked = pcall(fluidbox.get_locked_fluid, i)
+    if ok2 and locked then return locked end
+    if fb_prototype and fb_prototype.filter then return fb_prototype.filter.name end
+    if fluidbox[i] then return fluidbox[i].name end
+    return nil
+end
+
+-- Returns input_points, output_points in the {x, y, type="\"fluid\""} format the
+-- Python MultiFluidHandler expects. Each point is the tile just outside the
+-- machine where a pipe must go. Fluidboxes with no known fluid (e.g. no recipe
+-- set yet) are skipped, matching the chemical-plant behaviour.
+local function get_generic_fluid_connection_points(entity)
+    local inputs, outputs = {}, {}
+    local fluidbox = entity.fluidbox
+    if not fluidbox then return inputs, outputs end
+    for i = 1, #fluidbox do
+        local fb_prototype = fluidbox.get_prototype(i)
+        if fb_prototype and fb_prototype.object_name ~= "LuaFluidBoxPrototype" then
+            fb_prototype = fb_prototype[1]  -- multiple prototypes: take the first
+        end
+        local fluid_name = fluidbox_fluid_name(fluidbox, i, fb_prototype)
+        local ok, connections = pcall(fluidbox.get_pipe_connections, i)
+        if fluid_name and ok and connections then
+            local target = (fb_prototype and fb_prototype.production_type == "output") and outputs or inputs
+            for _, connection in ipairs(connections) do
+                if connection.connection_type == "normal" and connection.target_position
+                        and is_valid_connection_point(entity.surface, connection.target_position) then
+                    table.insert(target, {
+                        x = connection.target_position.x,
+                        y = connection.target_position.y,
+                        type = "\"" .. fluid_name .. "\""
+                    })
+                end
+            end
+        end
+    end
+    return inputs, outputs
+end
+
 storage.utils.entity_status_names = function(entity_status)
     local s = entity_status
     if not s then return '"normal"' end
@@ -1071,7 +1128,12 @@ storage.utils.serialize_entity = function(entity)
     end
 
 
-    if entity.type == "assembling-machine" then
+    if generic_fluid_entities[entity.name] then
+        serialized.input_connection_points, serialized.output_connection_points =
+            get_generic_fluid_connection_points(entity)
+    end
+
+    if entity.type == "assembling-machine" and not generic_fluid_entities[entity.name] then
         local x, y = entity.position.x, entity.position.y
         serialized.connection_points = {}
 

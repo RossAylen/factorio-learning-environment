@@ -1117,3 +1117,201 @@ class Vehicle(Entity, BurnerType):
     trunk_inventory: Inventory = Inventory()
     _height: float = 2
     _width: float = 2
+
+
+# ---------------------------------------------------------------------------
+# Space Age (DLC) entities. Only exposed as Prototypes when FLE_SPACE_AGE=1.
+# Footprints are the in-game tile_width x tile_height of each prototype.
+# Multi-fluid machines report input_connection_points/output_connection_points
+# derived from their real pipe connections once a recipe is set.
+# ---------------------------------------------------------------------------
+
+
+class Foundry(MultiFluidHandler, AssemblingMachine):
+    """Space Age 5x5 metallurgy machine (unlocked on Vulcanus). Has +50% base productivity.
+    Melts iron/copper ore or lava (with calcite) into molten iron/copper, then casts plates,
+    gears, sticks, pipes, steel, cables and concrete from the molten metal.
+    Requires power. Set a recipe first, then connect fluids to its
+    input_connection_points / output_connection_points"""
+
+    _height: float = 5
+    _width: float = 5
+
+
+class ElectromagneticPlant(MultiFluidHandler, AssemblingMachine):
+    """Space Age 4x4 electronics machine (unlocked on Fulgora). Has +50% base productivity.
+    Crafts circuits, cables, supercapacitors, superconductors, accumulators etc. Some recipes
+    use fluids (electrolyte, holmium solution). Requires power.
+    Set a recipe first, then connect any fluids to its input/output_connection_points"""
+
+    _height: float = 4
+    _width: float = 4
+
+
+class CryogenicPlant(MultiFluidHandler, AssemblingMachine):
+    """Space Age 5x5 chemistry machine (unlocked on Aquilo). Runs cryogenics recipes
+    (fluoroketone, lithium plate, quantum processor, cryogenic science) and can also run
+    most chemical plant recipes. Requires power.
+    Set a recipe first, then connect fluids to its input/output_connection_points"""
+
+    _height: float = 5
+    _width: float = 5
+
+
+class Biochamber(MultiFluidHandler, AssemblingMachine, BurnerType):
+    """Space Age 3x3 organic processing machine (unlocked on Gleba). Has +50% base productivity.
+    NOT electric: it burns nutrients as fuel (insert nutrients into its fuel inventory).
+    Runs organic recipes (bioflux, bacteria cultivation, nutrients, bioplastic...).
+    Set a recipe first, then connect any fluids to its input/output_connection_points"""
+
+    _height: float = 3
+    _width: float = 3
+
+
+class Crusher(AssemblingMachine):
+    """Space Age 2x3 machine for space platforms. Crushes asteroid chunks into ore, ice,
+    carbon and calcite (asteroid crushing/reprocessing recipes). Requires power."""
+
+    _height: float = 3
+    _width: float = 2
+
+
+class CaptiveBiterSpawner(AssemblingMachine, BurnerType):
+    """Space Age 5x5 captured biter spawner. Fed bioflux as fuel, it produces biter eggs.
+    Biter eggs can hatch: keep them moving."""
+
+    _height: float = 5
+    _width: float = 5
+
+
+class Recycler(Entity, Electric):
+    """Quality 2x4 recycler. Breaks an item back into ~25% of its ingredients
+    (or returns 25% of an item that cannot be broken down). Requires power.
+    Insert items to recycle into furnace_source; take results out of furnace_result"""
+
+    furnace_source: Inventory = Inventory()
+    furnace_result: Inventory = Inventory()
+    _height: float = 4
+    _width: float = 2
+
+
+class BigMiningDrill(ElectricMiningDrill):
+    """Space Age 5x5 electric mining drill (Vulcanus). Mines a 13x13 area, depletes the patch
+    more slowly than the electric mining drill and can mine tungsten ore (needs sulfuric acid)."""
+
+    _height: float = 5
+    _width: float = 5
+
+
+class Biolab(Lab):
+    """Space Age 5x5 lab. Researches faster than the lab and uses half the science packs."""
+
+    _height: float = 5
+    _width: float = 5
+
+
+class AgriculturalTower(StaticEntity, Electric):
+    """Space Age 3x3 tower that plants seeds (tree, yumako, jellynut) on suitable soil around
+    it and harvests the grown plants into its output inventory. Requires power."""
+
+    _height: float = 3
+    _width: float = 3
+
+
+class AsteroidCollector(StaticEntity, Electric):
+    """Space Age 3x3 collector that grabs asteroid chunks. Space platforms only."""
+
+    _height: float = 3
+    _width: float = 3
+
+
+class CargoBay(Entity):
+    """Space Age 4x4 cargo bay. Extends the inventory of a space platform hub or
+    cargo landing pad when placed adjacent to it."""
+
+    _height: float = 4
+    _width: float = 4
+
+
+class Thruster(MultiFluidHandler):
+    """Space Age 4x5 thruster. Burns thruster fuel and oxidizer to move a space platform.
+    Space platforms only."""
+
+    _height: float = 5
+    _width: float = 4
+
+
+class FusionReactor(MultiFluidHandler, Electric):
+    """Space Age 6x6 fusion reactor. Consumes fusion power cells and cold fluoroketone,
+    produces fusion plasma for fusion generators. Neighbouring reactors get a bonus."""
+
+    _height: float = 6
+    _width: float = 6
+
+
+class FusionGenerator(MultiFluidHandler, Electric):
+    """Space Age 3x5 fusion generator. Turns fusion plasma into electricity and returns
+    hot fluoroketone."""
+
+    _height: float = 5
+    _width: float = 3
+
+
+class HeatingTower(Reactor, BurnerType):
+    """Space Age 3x3 heating tower. Burns fuel to produce heat (used to keep Aquilo
+    machines from freezing and for heat-powered setups)."""
+
+    _height: float = 3
+    _width: float = 3
+
+
+class LightningRod(Entity, Electric):
+    """Space Age 1x1 lightning rod. Attracts lightning on Fulgora and feeds the energy into
+    the electric network."""
+
+    _height: float = 1
+    _width: float = 1
+
+
+class LightningCollector(Entity, Electric):
+    """Space Age 2x2 lightning collector. Larger-radius lightning attractor that stores the
+    energy into the electric network."""
+
+    _height: float = 2
+    _width: float = 2
+
+
+class RailSupport(Entity):
+    """Elevated Rails 3x3 support pillar for elevated rail segments."""
+
+    _height: float = 3
+    _width: float = 3
+
+
+class RailRamp(Entity):
+    """Elevated Rails 2x16 ramp that takes ground rails up to elevated rails."""
+
+    _height: float = 16
+    _width: float = 2
+
+
+class RocketTurret(GunTurret):
+    """Space Age 3x3 turret that fires rockets (insert rockets as ammo)."""
+
+    _height: float = 3
+    _width: float = 3
+
+
+class RailgunTurret(GunTurret):
+    """Space Age 3x5 long-range railgun turret (insert railgun ammo). Requires power."""
+
+    _height: float = 5
+    _width: float = 3
+
+
+class TeslaTurret(Turret):
+    """Space Age 4x4 electric turret that chains lightning between enemies.
+    Powered by the electric network; needs no ammo."""
+
+    _height: float = 4
+    _width: float = 4

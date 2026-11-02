@@ -10,12 +10,13 @@ class SetEntityRecipe(Tool):
         super().__init__(connection, game_state)
 
     def __call__(
-        self, entity: Entity, prototype: Union[Prototype, RecipeName]
+        self, entity: Entity, prototype: Union[Prototype, RecipeName, str]
     ) -> Entity:
         """
         Sets the recipe of an given entity.
         :param entity: Entity to set recipe
-        :param prototype: The prototype to create, or a recipe name for more complex processes
+        :param prototype: The prototype to create, a RecipeName for more complex processes,
+            or the raw recipe name string (e.g. "casting-iron")
         :return: Entity that had its recipe set
         """
 
@@ -25,6 +26,8 @@ class SetEntityRecipe(Tool):
             name, _ = prototype.value
         elif isinstance(prototype, RecipeName):
             name = prototype.value
+        elif isinstance(prototype, str):
+            name = prototype
         else:
             raise ValueError(f"Invalid entity type: {prototype}")
 

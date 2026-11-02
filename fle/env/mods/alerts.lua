@@ -344,8 +344,11 @@ function lacks_assembler_resources(entity)
 
             for _, ingredient in pairs(ingredients) do
                 -- don't perform a check in the case of liquids like crude-oil, water etc.
-                if is_not_fluid(ingredient.name) then
-                    if prototypes.item[ingredient.name].type ~= "fluid" then
+                -- Use the ingredient's own type: a hard-coded fluid list misses modded/DLC
+                -- fluids (e.g. molten-iron), and prototypes.item[fluid] is nil, which errors
+                -- inside on_tick and kills the server.
+                if ingredient.type ~= "fluid" and is_not_fluid(ingredient.name) then
+                    if prototypes.item[ingredient.name] then
                         local available_amount = input_inventory.get_item_count(ingredient.name)
                         local missing_amount = ingredient.amount - available_amount
                         if missing_amount > 0 then

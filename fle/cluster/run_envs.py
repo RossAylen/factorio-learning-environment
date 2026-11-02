@@ -12,14 +12,11 @@ import zipfile
 import importlib.resources as ir
 from platformdirs import user_state_dir
 
+from fle.commons.space_age import space_age_enabled
+
 START_RCON_PORT = 27000
 START_GAME_PORT = 34197
 RCON_PASSWORD = "factorio"
-
-
-def space_age_enabled() -> bool:
-    """True when FLE_SPACE_AGE is set to 1/true/yes."""
-    return os.environ.get("FLE_SPACE_AGE", "").strip().lower() in ("1", "true", "yes")
 
 
 def resolve_state_dir() -> Path:

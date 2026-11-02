@@ -2,6 +2,11 @@ from __future__ import annotations
 import enum
 from difflib import get_close_matches
 from fle.env import entities as ent
+from fle.commons.space_age import space_age_enabled
+
+# Space Age (DLC) content is only exposed when FLE_SPACE_AGE=1, so the default
+# API (and every benchmark prompt generated from it) stays vanilla.
+SPACE_AGE = space_age_enabled()
 
 
 class ResourceName(enum.Enum):
@@ -12,6 +17,14 @@ class ResourceName(enum.Enum):
     Water = "water"
     CrudeOil = "crude-oil"
     UraniumOre = "uranium-ore"
+
+    if SPACE_AGE:
+        Calcite = "calcite"  # Vulcanus
+        TungstenOre = "tungsten-ore"  # Vulcanus, needs a big mining drill + sulfuric acid
+        SulfuricAcidGeyser = "sulfuric-acid-geyser"  # Vulcanus, mine with a pumpjack
+        Scrap = "scrap"  # Fulgora, recycle it for holmium and other parts
+        LithiumBrine = "lithium-brine"  # Aquilo, mine with a pumpjack
+        FluorineVent = "fluorine-vent"  # Aquilo, mine with a pumpjack
 
 
 class PrototypeMetaclass(enum.EnumMeta):
@@ -79,6 +92,62 @@ class RecipeName(enum.Enum):
     EmptySulfuricAcidBarrel = "empty-sulfuric-acid-barrel"
     EmptyWaterBarrel = "empty-water-barrel"
 
+    if SPACE_AGE:
+        # Space Age recipes whose name differs from the item/fluid they produce.
+        # Foundry (metallurgy)
+        MoltenIronFromLava = "molten-iron-from-lava"
+        MoltenCopperFromLava = "molten-copper-from-lava"
+        CastingIron = "casting-iron"
+        CastingCopper = "casting-copper"
+        CastingSteel = "casting-steel"
+        CastingIronGearWheel = "casting-iron-gear-wheel"
+        CastingIronStick = "casting-iron-stick"
+        CastingCopperCable = "casting-copper-cable"
+        CastingPipe = "casting-pipe"
+        CastingPipeToGround = "casting-pipe-to-ground"
+        CastingLowDensityStructure = "casting-low-density-structure"
+        ConcreteFromMoltenIron = "concrete-from-molten-iron"
+        # Crusher (space platforms)
+        MetallicAsteroidCrushing = "metallic-asteroid-crushing"
+        CarbonicAsteroidCrushing = "carbonic-asteroid-crushing"
+        OxideAsteroidCrushing = "oxide-asteroid-crushing"
+        AdvancedMetallicAsteroidCrushing = "advanced-metallic-asteroid-crushing"
+        AdvancedCarbonicAsteroidCrushing = "advanced-carbonic-asteroid-crushing"
+        AdvancedOxideAsteroidCrushing = "advanced-oxide-asteroid-crushing"
+        MetallicAsteroidReprocessing = "metallic-asteroid-reprocessing"
+        CarbonicAsteroidReprocessing = "carbonic-asteroid-reprocessing"
+        OxideAsteroidReprocessing = "oxide-asteroid-reprocessing"
+        # Chemistry / cryogenics
+        AcidNeutralisation = "acid-neutralisation"
+        SteamCondensation = "steam-condensation"
+        IceMelting = "ice-melting"
+        CoalSynthesis = "coal-synthesis"
+        SimpleCoalLiquefaction = "simple-coal-liquefaction"
+        AmmoniacalSolutionSeparation = "ammoniacal-solution-separation"
+        SolidFuelFromAmmonia = "solid-fuel-from-ammonia"
+        AmmoniaRocketFuel = "ammonia-rocket-fuel"
+        AdvancedThrusterFuel = "advanced-thruster-fuel"
+        AdvancedThrusterOxidizer = "advanced-thruster-oxidizer"
+        Fluoroketone = "fluoroketone"
+        FluoroketoneCooling = "fluoroketone-cooling"
+        # Biochamber (organic)
+        IronBacteriaCultivation = "iron-bacteria-cultivation"
+        CopperBacteriaCultivation = "copper-bacteria-cultivation"
+        NutrientsFromSpoilage = "nutrients-from-spoilage"
+        NutrientsFromYumakoMash = "nutrients-from-yumako-mash"
+        NutrientsFromBioflux = "nutrients-from-bioflux"
+        NutrientsFromBiterEgg = "nutrients-from-biter-egg"
+        NutrientsFromFish = "nutrients-from-fish"
+        YumakoProcessing = "yumako-processing"
+        JellynutProcessing = "jellynut-processing"
+        Bioplastic = "bioplastic"
+        Biosulfur = "biosulfur"
+        Biolubricant = "biolubricant"
+        RocketFuelFromJelly = "rocket-fuel-from-jelly"
+        BurntSpoilage = "burnt-spoilage"
+        WoodProcessing = "wood-processing"
+        FishBreeding = "fish-breeding"
+
 
 class Prototype(enum.Enum, metaclass=PrototypeMetaclass):
     AssemblingMachine1 = "assembling-machine-1", ent.AssemblingMachine
@@ -97,10 +166,14 @@ class Prototype(enum.Enum, metaclass=PrototypeMetaclass):
         ent.Inserter,
     )  # Factorio 2.0: old stack-inserter renamed to bulk-inserter
     # Backwards compatibility aliases - map to closest equivalent
-    StackInserter = (
-        "bulk-inserter",
-        ent.Inserter,
-    )  # Factorio 2.0: old stack-inserter renamed to bulk-inserter
+    if SPACE_AGE:
+        # Space Age adds a real stack-inserter (stacks items onto belts)
+        StackInserter = "stack-inserter", ent.Inserter
+    else:
+        StackInserter = (
+            "bulk-inserter",
+            ent.Inserter,
+        )  # Factorio 2.0: old stack-inserter renamed to bulk-inserter
     FilterInserter = (
         "fast-inserter",
         ent.Inserter,
@@ -288,6 +361,114 @@ class Prototype(enum.Enum, metaclass=PrototypeMetaclass):
     Tank = "tank", ent.Vehicle
     Spidertron = "spidertron", ent.Vehicle
 
+    if SPACE_AGE:
+        # ---- Space Age / Quality / Elevated Rails buildings ----
+        Foundry = "foundry", ent.Foundry
+        ElectromagneticPlant = "electromagnetic-plant", ent.ElectromagneticPlant
+        CryogenicPlant = "cryogenic-plant", ent.CryogenicPlant
+        Biochamber = "biochamber", ent.Biochamber
+        Crusher = "crusher", ent.Crusher
+        CaptiveBiterSpawner = "captive-biter-spawner", ent.CaptiveBiterSpawner
+        Recycler = "recycler", ent.Recycler
+        BigMiningDrill = "big-mining-drill", ent.BigMiningDrill
+        Biolab = "biolab", ent.Biolab
+        AgriculturalTower = "agricultural-tower", ent.AgriculturalTower
+        HeatingTower = "heating-tower", ent.HeatingTower
+        FusionReactor = "fusion-reactor", ent.FusionReactor
+        FusionGenerator = "fusion-generator", ent.FusionGenerator
+        LightningRod = "lightning-rod", ent.LightningRod
+        LightningCollector = "lightning-collector", ent.LightningCollector
+        TurboTransportBelt = "turbo-transport-belt", ent.TransportBelt
+        TurboUndergroundBelt = "turbo-underground-belt", ent.UndergroundBelt
+        TurboSplitter = "turbo-splitter", ent.Splitter
+        RocketTurret = "rocket-turret", ent.RocketTurret
+        RailgunTurret = "railgun-turret", ent.RailgunTurret
+        TeslaTurret = "tesla-turret", ent.TeslaTurret
+        RailSupport = "rail-support", ent.RailSupport
+        RailRamp = "rail-ramp", ent.RailRamp
+        # Space platform only
+        AsteroidCollector = "asteroid-collector", ent.AsteroidCollector
+        CargoBay = "cargo-bay", ent.CargoBay
+        Thruster = "thruster", ent.Thruster
+        SpacePlatformFoundation = "space-platform-foundation", None
+        SpacePlatformStarterPack = "space-platform-starter-pack", None
+
+        # ---- Space Age items ----
+        # Science
+        MetallurgicSciencePack = "metallurgic-science-pack", None
+        ElectromagneticSciencePack = "electromagnetic-science-pack", None
+        AgriculturalSciencePack = "agricultural-science-pack", None
+        CryogenicSciencePack = "cryogenic-science-pack", None
+        PromethiumSciencePack = "promethium-science-pack", None
+        # Vulcanus
+        Calcite = "calcite", None
+        TungstenOre = "tungsten-ore", None
+        TungstenPlate = "tungsten-plate", None
+        TungstenCarbide = "tungsten-carbide", None
+        # Fulgora
+        Scrap = "scrap", None
+        HolmiumOre = "holmium-ore", None
+        HolmiumPlate = "holmium-plate", None
+        Supercapacitor = "supercapacitor", None
+        Superconductor = "superconductor", None
+        # Gleba
+        Yumako = "yumako", None
+        YumakoMash = "yumako-mash", None
+        YumakoSeed = "yumako-seed", None
+        Jellynut = "jellynut", None
+        Jelly = "jelly", None
+        JellynutSeed = "jellynut-seed", None
+        TreeSeed = "tree-seed", None
+        Bioflux = "bioflux", None
+        Nutrients = "nutrients", None
+        Spoilage = "spoilage", None
+        IronBacteria = "iron-bacteria", None
+        CopperBacteria = "copper-bacteria", None
+        BiterEgg = "biter-egg", None
+        PentapodEgg = "pentapod-egg", None
+        Carbon = "carbon", None
+        CarbonFiber = "carbon-fiber", None
+        ArtificialYumakoSoil = "artificial-yumako-soil", None
+        ArtificialJellynutSoil = "artificial-jellynut-soil", None
+        OvergrowthYumakoSoil = "overgrowth-yumako-soil", None
+        OvergrowthJellynutSoil = "overgrowth-jellynut-soil", None
+        # Aquilo
+        Ice = "ice", None
+        Lithium = "lithium", None
+        LithiumPlate = "lithium-plate", None
+        QuantumProcessor = "quantum-processor", None
+        FusionPowerCell = "fusion-power-cell", None
+        IcePlatform = "ice-platform", None
+        Foundation = "foundation", None
+        # Space
+        MetallicAsteroidChunk = "metallic-asteroid-chunk", None
+        CarbonicAsteroidChunk = "carbonic-asteroid-chunk", None
+        OxideAsteroidChunk = "oxide-asteroid-chunk", None
+        PromethiumAsteroidChunk = "promethium-asteroid-chunk", None
+        # Quality modules
+        QualityModule = "quality-module", None
+        QualityModule2 = "quality-module-2", None
+        QualityModule3 = "quality-module-3", None
+        # Ammo
+        TeslaAmmo = "tesla-ammo", ent.Ammo
+        RailgunAmmo = "railgun-ammo", ent.Ammo
+
+        # ---- Space Age fluids ----
+        Lava = "lava", None
+        MoltenIron = "molten-iron", None
+        MoltenCopper = "molten-copper", None
+        HolmiumSolution = "holmium-solution", None
+        Electrolyte = "electrolyte", None
+        Ammonia = "ammonia", None
+        AmmoniacalSolution = "ammoniacal-solution", None
+        LithiumBrine = "lithium-brine", None
+        Fluorine = "fluorine", None
+        FluoroketoneHot = "fluoroketone-hot", None
+        FluoroketoneCold = "fluoroketone-cold", None
+        FusionPlasma = "fusion-plasma", None
+        ThrusterFuel = "thruster-fuel", None
+        ThrusterOxidizer = "thruster-oxidizer", None
+
     def __init__(self, prototype_name, entity_class_name):
         self.prototype_name = prototype_name
         self.entity_class = entity_class_name
@@ -446,6 +627,76 @@ class Technology(enum.Enum):
     LowDensityStructure = "low-density-structure"
     RocketSiloTechnology = "rocket-silo"
 
+    if SPACE_AGE:
+        # ---- Space Age: space travel and planets ----
+        SpacePlatform = "space-platform"
+        SpacePlatformThruster = "space-platform-thruster"
+        PlanetDiscoveryVulcanus = "planet-discovery-vulcanus"
+        PlanetDiscoveryFulgora = "planet-discovery-fulgora"
+        PlanetDiscoveryGleba = "planet-discovery-gleba"
+        PlanetDiscoveryAquilo = "planet-discovery-aquilo"
+        AdvancedAsteroidProcessing = "advanced-asteroid-processing"
+        AsteroidReprocessing = "asteroid-reprocessing"
+        # Vulcanus
+        Foundry = "foundry"
+        BigMiningDrill = "big-mining-drill"
+        CalciteProcessing = "calcite-processing"
+        TungstenCarbide = "tungsten-carbide"
+        TungstenSteel = "tungsten-steel"
+        MetallurgicSciencePack = "metallurgic-science-pack"
+        TurboTransportBelt = "turbo-transport-belt"
+        # Fulgora
+        Recycling = "recycling"
+        HolmiumProcessing = "holmium-processing"
+        ElectromagneticPlant = "electromagnetic-plant"
+        ElectromagneticSciencePack = "electromagnetic-science-pack"
+        LightningCollector = "lightning-collector"
+        # Gleba
+        Agriculture = "agriculture"
+        Yumako = "yumako"
+        Jellynut = "jellynut"
+        Biochamber = "biochamber"
+        Bioflux = "bioflux"
+        BiofluxProcessing = "bioflux-processing"
+        BacteriaCultivation = "bacteria-cultivation"
+        ArtificialSoil = "artificial-soil"
+        OvergrowthSoil = "overgrowth-soil"
+        TreeSeeding = "tree-seeding"
+        FishBreeding = "fish-breeding"
+        CarbonFiber = "carbon-fiber"
+        AgriculturalSciencePack = "agricultural-science-pack"
+        Biolab = "biolab"
+        Captivity = "captivity"
+        CaptiveBiterSpawner = "captive-biter-spawner"
+        BiterEggHandling = "biter-egg-handling"
+        # Aquilo
+        LithiumProcessing = "lithium-processing"
+        CryogenicPlant = "cryogenic-plant"
+        CryogenicSciencePack = "cryogenic-science-pack"
+        QuantumProcessor = "quantum-processor"
+        FusionReactor = "fusion-reactor"
+        Foundation = "foundation"
+        HeatingTower = "heating-tower"
+        PromethiumSciencePack = "promethium-science-pack"
+        # Quality
+        QualityModule = "quality-module"
+        QualityModule2 = "quality-module-2"
+        QualityModule3 = "quality-module-3"
+        EpicQuality = "epic-quality"
+        LegendaryQuality = "legendary-quality"
+        # Logistics / military / misc
+        StackInserterTech = "stack-inserter"
+        TransportBeltCapacity1 = "transport-belt-capacity-1"
+        TransportBeltCapacity2 = "transport-belt-capacity-2"
+        ElevatedRail = "elevated-rail"
+        RailSupportFoundations = "rail-support-foundations"
+        RocketTurret = "rocket-turret"
+        TeslaWeapons = "tesla-weapons"
+        Railgun = "railgun"
+        MechArmor = "mech-armor"
+        ToolbeltEquipment = "toolbelt-equipment"
+        ResearchProductivity = "research-productivity"
+
 
 # Helper dictionary to look up technology by name string
 technology_by_name = {tech.value: tech for tech in Technology}
@@ -460,3 +711,11 @@ class Resource:
     CrudeOil = "crude-oil", ent.ResourcePatch
     UraniumOre = "uranium-ore", ent.ResourcePatch
     Wood = "wood", ent.ResourcePatch
+
+    if SPACE_AGE:
+        Calcite = "calcite", ent.ResourcePatch
+        TungstenOre = "tungsten-ore", ent.ResourcePatch
+        SulfuricAcidGeyser = "sulfuric-acid-geyser", ent.ResourcePatch
+        Scrap = "scrap", ent.ResourcePatch
+        LithiumBrine = "lithium-brine", ent.ResourcePatch
+        FluorineVent = "fluorine-vent", ent.ResourcePatch
