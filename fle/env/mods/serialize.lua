@@ -1027,9 +1027,11 @@ storage.utils.serialize_entity = function(entity)
     end
 
     -- Add the current research to the lab
-    if entity.name == "lab" then
+    if entity.type == "lab" then  -- lab and Space Age biolab
         if storage.agent_characters[1].force.current_research ~= nil then
-            serialized.research = storage.agent_characters[1].force.current_research.name
+            -- quoted like every other string field: an unquoted hyphenated name
+            -- (e.g. electric-mining-drill) breaks parsing of the whole entity
+            serialized.research = "\"" .. storage.agent_characters[1].force.current_research.name .. "\""
         else
             serialized.research = nil
         end
