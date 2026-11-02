@@ -105,6 +105,17 @@ generate_compose_file() {
         exit 1
     fi
     
+    # Space Age: keep the DLC data dirs and use the DLC-enabled mod-list.
+    # Default (vanilla): delete the DLC dirs so clients without Space Age can sync.
+    if [ "$SPACE_AGE" = true ]; then
+        DLC_STRIP=""
+        MODS_DIR="mods-space-age"
+        echo "Space Age DLC: enabled"
+    else
+        DLC_STRIP="rm -rf /opt/factorio/data/elevated-rails /opt/factorio/data/quality /opt/factorio/data/space-age && "
+        MODS_DIR="mods"
+    fi
+
     # Create the docker-compose file
     cat > docker-compose.yml << EOF
 version: '3'
@@ -121,7 +132,7 @@ EOF
   factorio_${i}:
     image: factoriotools/factorio:2.0.73
     platform: \${DOCKER_PLATFORM:-linux/amd64}
-    command: /bin/sh -c 'rm -rf /opt/factorio/data/elevated-rails /opt/factorio/data/quality /opt/factorio/data/space-age && exec ${EMULATOR} /opt/factorio/bin/x64/factorio ${COMMAND}
+    command: /bin/sh -c '${DLC_STRIP}exec ${EMULATOR} /opt/factorio/bin/x64/factorio ${COMMAND}
       --port 34197 --server-settings /opt/factorio/config/server-settings.json --map-gen-settings
       /opt/factorio/config/map-gen-settings.json --map-settings /opt/factorio/config/map-settings.json
       --server-banlist /opt/factorio/config/server-banlist.json --rcon-port 27015
@@ -150,7 +161,7 @@ EOF
     - source: ../../.fle/data/_screenshots
       target: /opt/factorio/script-output
       type: bind
-    - source: ./mods
+    - source: ./${MODS_DIR}
       target: /opt/factorio/mods
       type: bind
 ${SAVE_VOLUME}
@@ -222,6 +233,7 @@ show_help() {
     echo "  -s SCENARIO   Scenario to run (open_world or default_lab_scenario, default: default_lab_scenario)"
     echo "  -sv SAVE_FILE, --use_save SAVE_FILE Use a .zip save file from factorio"
     echo "  -m, --attach_mods Attach mods to the instances"
+    echo "  --space-age   Run with the Space Age DLC enabled (or set FLE_SPACE_AGE=1)"
     echo ""
     echo "Examples:"
     echo "  $0                           Start 1 instance with default_lab_scenario"
@@ -241,6 +253,8 @@ EMULATOR=""
 
 # Boolean: attach mods or not
 ATTACH_MOD=false
+# Boolean: run with the Space Age DLC (also enabled by FLE_SPACE_AGE=1)
+case "${FLE_SPACE_AGE,,}" in 1|true|yes) SPACE_AGE=true ;; *) SPACE_AGE=false ;; esac
 SAVE_ADDED=false
 
 # Parse args (supporting both short and long options)
@@ -296,6 +310,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -m|--attach_mods)
       ATTACH_MOD=true
+      shift
+      ;;
+    --space-age)
+      SPACE_AGE=true
       shift
       ;;
     -h|--help)

@@ -17,6 +17,11 @@ START_GAME_PORT = 34197
 RCON_PASSWORD = "factorio"
 
 
+def space_age_enabled() -> bool:
+    """True when FLE_SPACE_AGE is set to 1/true/yes."""
+    return os.environ.get("FLE_SPACE_AGE", "").strip().lower() in ("1", "true", "yes")
+
+
 def resolve_state_dir() -> Path:
     """Resolve platform-specific state directory with env override.
 
@@ -73,6 +78,7 @@ class ComposeGenerator:
         work_dir: Path | None = None,
         pkg_scenarios_dir: Path | None = None,
         pkg_config_dir: Path | None = None,
+        space_age: bool | None = None,
     ):
         self.arch = platform.machine()
         self.os_name = platform.system()
@@ -84,6 +90,9 @@ class ComposeGenerator:
         # Package resource directories (read-only)
         self.pkg_scenarios_dir = pkg_scenarios_dir
         self.pkg_config_dir = pkg_config_dir
+        # Space Age DLC: keep the DLC data dirs and enable them in mod-list.
+        # Defaults to the FLE_SPACE_AGE env var so auto-started clusters follow it.
+        self.space_age = space_age_enabled() if space_age is None else space_age
 
     def _docker_platform(self):
         if self.arch in ["arm64", "aarch64"]:
@@ -120,6 +129,8 @@ class ComposeGenerator:
         args.append("--mod-directory /opt/factorio/mods")
         factorio_bin = f"{self._emulator()} /opt/factorio/bin/x64/factorio".strip()
         factorio_cmd = " ".join([factorio_bin, launch_command] + args)
+        if self.space_age:
+            return f"/bin/sh -c 'exec {factorio_cmd}'"
         # Remove DLC data dirs so the server runs vanilla base-game only;
         # this prevents "Sync mods with server" / "No release" errors for
         # clients that don't own Space Age.
@@ -177,7 +188,7 @@ class ComposeGenerator:
     def _bundled_mods_volume(self):
         """Returns bundled mod-list config (disables DLC mods for client sync)."""
         pkg_root = ir.files("fle.cluster")
-        mods_dir = Path(pkg_root / "mods")
+        mods_dir = Path(pkg_root / ("mods-space-age" if self.space_age else "mods"))
         if not mods_dir.exists():
             raise ValueError(f"Bundled mods directory '{mods_dir}' does not exist.")
         return {

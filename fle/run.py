@@ -37,6 +37,8 @@ def fle_cluster(args):
             cmd.extend(["-n", str(args.n)])
         if args.s:
             cmd.extend(["-s", args.s])
+        if getattr(args, "space_age", False):
+            cmd.append("--space-age")
     try:
         subprocess.run(cmd, cwd=str(cluster_path), check=True)
     except subprocess.CalledProcessError as e:
@@ -593,6 +595,11 @@ Examples:
         "-s",
         type=str,
         help="Scenario (open_world or default_lab_scenario)",
+    )
+    parser_cluster.add_argument(
+        "--space-age",
+        action="store_true",
+        help="Run with the Space Age DLC enabled (or set FLE_SPACE_AGE=1)",
     )
     parser_eval = subparsers.add_parser("eval", help="Run experiment")
     parser_eval.add_argument("--config", required=True, help="Path to run config JSON")
