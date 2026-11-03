@@ -64,7 +64,7 @@ storage.actions.rotate_entity = function(player_index, x, y, direction, entity)
             local saved_outputs = {}
             local saved_modules = {}
 
-            local input_inv = closest_entity.get_inventory(defines.inventory.assembling_machine_input)
+            local input_inv = closest_entity.get_inventory(storage.INV.assembling_machine_input)
             if input_inv then
                 for i = 1, #input_inv do
                     local stack = input_inv[i]
@@ -74,7 +74,7 @@ storage.actions.rotate_entity = function(player_index, x, y, direction, entity)
                 end
             end
 
-            local output_inv = closest_entity.get_inventory(defines.inventory.assembling_machine_output)
+            local output_inv = closest_entity.get_inventory(storage.INV.assembling_machine_output)
             if output_inv then
                 for i = 1, #output_inv do
                     local stack = output_inv[i]
@@ -84,7 +84,7 @@ storage.actions.rotate_entity = function(player_index, x, y, direction, entity)
                 end
             end
 
-            local modules_inv = closest_entity.get_inventory(defines.inventory.assembling_machine_modules)
+            local modules_inv = closest_entity.get_inventory(storage.INV.assembling_machine_modules)
             if modules_inv then
                 for i = 1, #modules_inv do
                     local stack = modules_inv[i]
@@ -121,21 +121,21 @@ storage.actions.rotate_entity = function(player_index, x, y, direction, entity)
                 end
 
                 -- Restore inventories
-                local new_input_inv = new_entity.get_inventory(defines.inventory.assembling_machine_input)
+                local new_input_inv = new_entity.get_inventory(storage.INV.assembling_machine_input)
                 if new_input_inv then
                     for _, item in pairs(saved_inputs) do
                         new_input_inv.insert(item)
                     end
                 end
 
-                local new_output_inv = new_entity.get_inventory(defines.inventory.assembling_machine_output)
+                local new_output_inv = new_entity.get_inventory(storage.INV.assembling_machine_output)
                 if new_output_inv then
                     for _, item in pairs(saved_outputs) do
                         new_output_inv.insert(item)
                     end
                 end
 
-                local new_modules_inv = new_entity.get_inventory(defines.inventory.assembling_machine_modules)
+                local new_modules_inv = new_entity.get_inventory(storage.INV.assembling_machine_modules)
                 if new_modules_inv then
                     for _, item in pairs(saved_modules) do
                         new_modules_inv.insert(item)

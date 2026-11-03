@@ -277,7 +277,7 @@ storage.actions.load_entity_state = function(player, stored_json_data)
             entity.energy = tonumber(state.energy)
         end
         if state.active ~= nil then
-            entity.active = state.active
+            storage.set_active(entity, state.active)
         end
     end
 

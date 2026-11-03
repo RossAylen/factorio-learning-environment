@@ -120,10 +120,10 @@ storage.actions.save_entity_state = function(player_index, distance, player_enti
             end
 
             -- Handle fluids
-            if entity.fluidbox then
+            if storage.fb(entity) then
                 state.fluid_box = {}
-                for i = 1, #entity.fluidbox do
-                    local fluid = entity.fluidbox[i]
+                for i = 1, #storage.fb(entity) do
+                    local fluid = storage.fb(entity)[i]
                     if fluid then
                         table.insert(state.fluid_box, {
                             name = '"' .. fluid.name .. '"',

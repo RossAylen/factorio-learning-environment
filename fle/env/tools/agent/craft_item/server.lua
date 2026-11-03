@@ -90,21 +90,16 @@ storage.actions.craft_item = function(player_index, entity, count)
         -- Note: 'player' here is actually the character entity (returned by ensure_valid_character)
         local can_hand_craft = false
         local proto = player.prototype
-        if proto then
-            local cats = proto.crafting_categories
-            if cats then
-                can_hand_craft = cats[recipe.category] or false
-            else
-                -- Character prototype exists but has no crafting_categories
-                -- Fallback: allow "crafting" category only
-                can_hand_craft = (recipe.category == "crafting")
+        local cats = proto and proto.crafting_categories
+        -- 2.1 recipes carry several categories (and "hand-crafting" replaced basic-crafting)
+        for _, c in pairs(storage.recipe_categories(recipe)) do
+            if (cats and cats[c]) or (not cats and (c == "crafting" or c == "hand-crafting")) then
+                can_hand_craft = true
+                break
             end
-        else
-            -- No prototype - fallback
-            can_hand_craft = (recipe.category == "crafting")
         end
         if not can_hand_craft then
-            return false, "Item " .. recipe_name .. " cannot be crafted (category: " .. tostring(recipe.category) .. "). Recipe requires a crafting machine or smelting in a furnace"
+            return false, "Item " .. recipe_name .. " cannot be crafted (category: " .. tostring(storage.recipe_category(recipe)) .. "). Recipe requires a crafting machine or smelting in a furnace"
         end
         return true, recipe
     end

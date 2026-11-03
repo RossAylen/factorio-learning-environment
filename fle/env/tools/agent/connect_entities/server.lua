@@ -103,13 +103,13 @@ end
 local function has_valid_fluidbox(entity)
     -- Factorio 2.0: fluidbox methods are on the LuaFluidBox object, not individual elements
     -- Also: get_fluid_system_id -> get_fluid_segment_id
-    return entity.fluidbox and #entity.fluidbox > 0 and entity.fluidbox[1] and entity.fluidbox.get_fluid_segment_id
+    return storage.fb(entity) and #storage.fb(entity) > 0 and storage.fb(entity)[1] and storage.fb(entity).get_fluid_segment_id
 end
 
 local function are_fluidboxes_connected(entity1, entity2)
     if has_valid_fluidbox(entity1) and has_valid_fluidbox(entity2) then
         -- Factorio 2.0: get_fluid_system_id -> get_fluid_segment_id
-        return entity1.fluidbox.get_fluid_segment_id(1) == entity2.fluidbox.get_fluid_segment_id(1)
+        return storage.fb(entity1).get_fluid_segment_id(1) == storage.fb(entity2).get_fluid_segment_id(1)
     end
     return false
 end
@@ -471,7 +471,7 @@ local function place_at_position(player, connection_type, current_position, dir,
     if existing_entity then
         -- game.print("Existing entity "..existing_entity.name)
         -- Get the existing network ID before any modifications
-        --local existing_network_id = has_valid_fluidbox(existing_entity) and existing_entity.fluidbox[1].get_fluid_system_id()
+        --local existing_network_id = has_valid_fluidbox(existing_entity) and storage.fb(existing_entity)[1].get_fluid_system_id()
 
         -- Update direction if needed
         if existing_entity.name ~= connection_type then
@@ -1361,7 +1361,7 @@ local function are_positions_pipe_connected(start_pos, end_pos, connection_type)
         
         if end_pipe and has_valid_fluidbox(end_pipe) then
             -- Factorio 2.0: get_fluid_system_id -> get_fluid_segment_id
-            return start_pipe.fluidbox.get_fluid_segment_id(1) == end_pipe.fluidbox.get_fluid_segment_id(1)
+            return storage.fb(start_pipe).get_fluid_segment_id(1) == storage.fb(end_pipe).get_fluid_segment_id(1)
         end
     end
 
@@ -1384,7 +1384,7 @@ local function serialize_pipe_group(entity)
     local max_search = 200
     local search_count = 0
     -- Factorio 2.0: get_fluid_system_id -> get_fluid_segment_id
-    local system_id = entity.fluidbox.get_fluid_segment_id(1)
+    local system_id = storage.fb(entity).get_fluid_segment_id(1)
 
     while #queue > 0 and search_count < max_search do
         search_count = search_count + 1
@@ -1413,7 +1413,7 @@ local function serialize_pipe_group(entity)
         for _, pipe in pairs(all_pipes) do
             if pipe.valid and has_valid_fluidbox(pipe) and not visited[pipe.unit_number] then
                 -- Factorio 2.0: get_fluid_system_id -> get_fluid_segment_id
-                if pipe.fluidbox.get_fluid_segment_id(1) == system_id then
+                if storage.fb(pipe).get_fluid_segment_id(1) == system_id then
                     table.insert(queue, pipe)
                 end
             end
@@ -2024,8 +2024,8 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
     -- verify every underground pair; pipes get one flip of both ends if the guess was wrong
     local function paired(a, b)
         if not (a and b and a.valid and b.valid) then return false end
-        if a.type == 'underground-belt' then return a.neighbours == b end
-        local ok, nb = pcall(function() return a.neighbours end)
+        if a.type == 'underground-belt' then return storage.neighbours(a) == b end
+        local ok, nb = pcall(function() return storage.neighbours(a) end)
         if not ok or not nb then return false end
         for _, group in pairs(nb) do
             if type(group) == 'table' then
@@ -2065,7 +2065,7 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
         end
         if first and lastp then
             local ok, same = pcall(function()
-                return first.fluidbox.get_fluid_segment_id(1) == lastp.fluidbox.get_fluid_segment_id(1)
+                return storage.fb(first).get_fluid_segment_id(1) == storage.fb(lastp).get_fluid_segment_id(1)
             end)
             if ok then connected = same end
         end

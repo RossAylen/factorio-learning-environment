@@ -2,10 +2,10 @@
 local function get_entity_item_count(entity, item_name)
     local inventory_types = {
         defines.inventory.chest,
-        defines.inventory.furnace_source,
-        defines.inventory.furnace_result,
-        defines.inventory.assembling_machine_input,
-        defines.inventory.assembling_machine_output,
+        storage.INV.furnace_source,
+        storage.INV.furnace_result,
+        storage.INV.assembling_machine_input,
+        storage.INV.assembling_machine_output,
         defines.inventory.fuel,
         defines.inventory.burnt_result,
         defines.inventory.reactor_source,
@@ -46,10 +46,10 @@ end
 local function remove_items_from_entity(entity, stack)
     local inventory_types = {
         defines.inventory.chest,
-        defines.inventory.furnace_source,
-        defines.inventory.furnace_result,
-        defines.inventory.assembling_machine_input,
-        defines.inventory.assembling_machine_output,
+        storage.INV.furnace_source,
+        storage.INV.furnace_result,
+        storage.INV.assembling_machine_input,
+        storage.INV.assembling_machine_output,
         defines.inventory.fuel,
         defines.inventory.burnt_result,
         defines.inventory.reactor_source,

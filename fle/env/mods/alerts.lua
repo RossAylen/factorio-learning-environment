@@ -85,23 +85,23 @@ local function is_full(entity)
             if entity.type == "furnace" then
                 if inventory_id == defines.inventory.fuel then
                     inventory_name = "furnace fuel source"
-                elseif inventory_id == defines.inventory.furnace_source then
+                elseif inventory_id == storage.INV.furnace_source then
                     inventory_name = "furnace source"
-                elseif inventory_id == defines.inventory.furnace_result then
+                elseif inventory_id == storage.INV.furnace_result then
                     inventory_name = "furnace result"
                 end
             elseif entity.type == "assembling-machine" then
-                if inventory_id == defines.inventory.assembling_machine_input then
+                if inventory_id == storage.INV.assembling_machine_input then
                     inventory_name = "assembler input"
-                elseif inventory_id == defines.inventory.assembling_machine_output then
+                elseif inventory_id == storage.INV.assembling_machine_output then
                     inventory_name = "assembler output"
                 end
             elseif entity.type == "rocket-silo" then
-                if inventory_id == defines.inventory.rocket_silo_input then
+                if inventory_id == storage.INV.rocket_silo_input then
                     inventory_name = "rocket silo input"
-                elseif inventory_id == defines.inventory.rocket_silo_output then
+                elseif inventory_id == storage.INV.rocket_silo_output then
                     inventory_name = "rocket silo output"
-                elseif inventory_id == defines.inventory.rocket_silo_modules then
+                elseif inventory_id == storage.INV.rocket_silo_modules then
                     inventory_name = "rocket silo modules"
                 elseif inventory_id == defines.inventory.rocket then
                     inventory_name = "rocket"
@@ -222,14 +222,14 @@ end
 -- Define a function to check if the entity (boiler) has necessary input liquid
 local function has_input_liquid(entity)
     if entity.type == "boiler" then
-        local fluid_box = entity.fluidbox[1]
+        local fluid_box = storage.fb(entity)[1]
         if fluid_box == nil or fluid_box.amount <= 0 then
             return false
         end
     end
     -- If the entity is a steam engine, check if it has water
     if entity.type == "generator" then
-        local fluid_box = entity.fluidbox[1]
+        local fluid_box = storage.fb(entity)[1]
         if fluid_box == nil or fluid_box.amount <= 0 then
             return false
         end
@@ -345,7 +345,7 @@ function lacks_assembler_resources(entity)
         local recipe = entity.get_recipe()
         if recipe then
             local ingredients = recipe.ingredients
-            local input_inventory = entity.get_inventory(defines.inventory.assembling_machine_input)
+            local input_inventory = entity.get_inventory(storage.INV.assembling_machine_input)
             local missing_resources = {}
 
             for _, ingredient in pairs(ingredients) do

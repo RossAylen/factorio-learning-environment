@@ -516,6 +516,7 @@ class FactorioInstance:
 
         init_scripts = [
             "lualib_util",
+            "compat21",
             "utils",
             "alerts",
             "connection_points",

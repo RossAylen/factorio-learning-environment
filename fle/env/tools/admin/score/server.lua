@@ -61,7 +61,9 @@ local function get_product_list()
     if entity.type == "rocket-silo" and entity.fixed_recipe then
       -- 2.1: fixed_recipe may not name a recipe prototype; skip that silo instead of
       -- returning nil for the whole product list
-      local recipe = recipes[entity.fixed_recipe]
+      local fixed = entity.fixed_recipe  -- 2.1 returns a LuaRecipePrototype, 2.0 a name
+      if type(fixed) ~= "string" then fixed = fixed and fixed.name end
+      local recipe = fixed and recipes[fixed]
       if recipe then
         local required_parts = entity.rocket_parts_required
         local list = {}
