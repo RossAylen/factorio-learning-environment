@@ -1874,7 +1874,7 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
             local dv = DIRV[e.direction]
             local outputs = e.type == "transport-belt" or e.belt_to_ground_type == "output"
             if dv and outputs and math.abs(e.position.x + dv[1] - x) < 0.1 and math.abs(e.position.y + dv[2] - y) < 0.1 then
-                v = 40
+                v = 1000   -- effectively forbidden: it would merge two lines
                 break
             end
         end
