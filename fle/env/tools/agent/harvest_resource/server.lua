@@ -250,8 +250,18 @@ local function find_entity_type_at_position(surface, position)
     }
 
     if #exact_entities > 0 then
-        -- game.print("Found type ".. exact_entities[1].name)
-        return exact_entities[1].type, exact_entities[1].name
+        -- A tree or rock standing on an ore tile must win over the ore underneath it,
+        -- otherwise trees on resource patches can never be cleared. Prefer the closest
+        -- tree/simple-entity; fall back to the resource.
+        local best, best_d = nil, nil
+        for _, e in ipairs(exact_entities) do
+            if e.type ~= "resource" then
+                local d = (e.position.x - position.x)^2 + (e.position.y - position.y)^2
+                if not best_d or d < best_d then best, best_d = e, d end
+            end
+        end
+        local pick = best or exact_entities[1]
+        return pick.type, pick.name
     end
     return nil, nil
 end
