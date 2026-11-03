@@ -1,13 +1,12 @@
 {
-  "difficulty_settings":
-  {
+  "difficulty_settings": {
     "recipe_difficulty": 0,
     "technology_difficulty": 0,
     "technology_price_multiplier": 1,
-    "research_queue_setting": "after-victory"
+    "research_queue_setting": "after-victory",
+    "spoil_time_modifier": 1
   },
-  "pollution":
-  {
+  "pollution": {
     "enabled": true,
     "_comment_min_to_diffuse_1": "these are values for 60 ticks (1 simulated second)",
     "_comment_min_to_diffuse_2": "amount that is diffused to neighboring chunk",
@@ -23,15 +22,13 @@
     "max_pollution_to_restore_trees": 20,
     "enemy_attack_pollution_consumption_modifier": 1
   },
-  "enemy_evolution":
-  {
+  "enemy_evolution": {
     "enabled": true,
-    "time_factor": 0.000004,
+    "time_factor": 4e-06,
     "destroy_factor": 0.002,
-    "pollution_factor": 0.0000009
+    "pollution_factor": 9e-07
   },
-  "enemy_expansion":
-  {
+  "enemy_expansion": {
     "enabled": true,
     "min_base_spacing": 3,
     "max_expansion_distance": 7,
@@ -45,10 +42,12 @@
     "settler_group_min_size": 5,
     "settler_group_max_size": 20,
     "min_expansion_cooldown": 14400,
-    "max_expansion_cooldown": 216000
+    "max_expansion_cooldown": 216000,
+    "min_expansion_distance": 3,
+    "evolution_group_size_factor": 8.0,
+    "build_base_unit_dispatch_cooldown": 1800
   },
-  "unit_group":
-  {
+  "unit_group": {
     "min_group_gathering_time": 3600,
     "max_group_gathering_time": 36000,
     "max_wait_time_for_late_members": 7200,
@@ -63,25 +62,21 @@
     "max_gathering_unit_groups": 30,
     "max_unit_group_size": 200
   },
-  "steering":
-  {
-    "default":
-    {
+  "steering": {
+    "default": {
       "radius": 1.2,
       "separation_force": 0.005,
       "separation_factor": 1.2,
       "force_unit_fuzzy_goto_behavior": false
     },
-    "moving":
-    {
+    "moving": {
       "radius": 3,
       "separation_force": 0.01,
       "separation_factor": 3,
       "force_unit_fuzzy_goto_behavior": false
     }
   },
-  "path_finder":
-  {
+  "path_finder": {
     "fwd2bwd_ratio": 5,
     "goal_pressure_ratio": 2,
     "max_steps_worked_per_tick": 100,
@@ -112,8 +107,16 @@
     "short_request_ratio": 0.5,
     "min_steps_to_check_path_find_termination": 2000,
     "start_to_goal_cost_multiplier_to_terminate_path_find": 500.0,
-    "overload_levels": [0, 100, 500],
-    "overload_multipliers": [2, 3, 4],
+    "overload_levels": [
+      0,
+      100,
+      500
+    ],
+    "overload_multipliers": [
+      2,
+      3,
+      4
+    ],
     "negative_path_cache_delay_interval": 20
   },
   "max_failed_behavior_count": 3,

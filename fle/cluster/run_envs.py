@@ -73,7 +73,8 @@ class ComposeGenerator:
     """Compose YAML generator with centralized path handling."""
 
     rcon_password = RCON_PASSWORD
-    image = "factoriotools/factorio:2.0.73"
+    # FLE_FACTORIO_VERSION picks the server version (joining clients must match exactly)
+    image = f"factoriotools/factorio:{os.environ.get('FLE_FACTORIO_VERSION', '2.1.24')}"
     map_gen_seed = 44340
     internal_rcon_port = 27015
     internal_game_port = 34197
@@ -162,7 +163,7 @@ class ComposeGenerator:
         return (
             f"/bin/sh -c '"
             f"rm -rf /opt/factorio/data/elevated-rails "
-            f"/opt/factorio/data/quality "
+            f"/opt/factorio/data/quality /opt/factorio/data/recycler "
             f"/opt/factorio/data/space-age && "
             f"exec {factorio_cmd}'"
         )

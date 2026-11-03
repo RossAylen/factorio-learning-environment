@@ -46,19 +46,25 @@ end
 -- Define a function to check if an entity is full
 local function is_full(entity)
     -- Map inventory types to string names
-    local inventory_names = {
-        [defines.inventory.rocket_silo_rocket] = "rocket",
-        [defines.inventory.rocket_silo_input] = "rocket input",
-        [defines.inventory.rocket_silo_output] = "rocket output",
-        [defines.inventory.rocket_silo_modules] = "rocket modules",
-        [defines.inventory.fuel] = "fuel source",
-        [defines.inventory.burnt_result] = "burnt result",
-        [defines.inventory.assembling_machine_input] = "assembling machine input",
-        [defines.inventory.assembling_machine_output] = "assembling machine output",
-        [defines.inventory.chest] = "chest",
-        [defines.inventory.furnace_source] = "furnace source",
-        [defines.inventory.furnace_result] = "furnace result",
-    }
+    -- Built from names, skipping any this game version lacks: 2.1 dropped some
+    -- defines.inventory entries, and a nil key crashed every tick ("table index is nil").
+    local inventory_names = {}
+    for define_name, label in pairs({
+        rocket_silo_rocket = "rocket",
+        rocket_silo_input = "rocket input",
+        rocket_silo_output = "rocket output",
+        rocket_silo_modules = "rocket modules",
+        fuel = "fuel source",
+        burnt_result = "burnt result",
+        assembling_machine_input = "assembling machine input",
+        assembling_machine_output = "assembling machine output",
+        chest = "chest",
+        furnace_source = "furnace source",
+        furnace_result = "furnace result",
+    }) do
+        local id = defines.inventory[define_name]
+        if id ~= nil and inventory_names[id] == nil then inventory_names[id] = label end
+    end
 
     local full_inventories = {}
 

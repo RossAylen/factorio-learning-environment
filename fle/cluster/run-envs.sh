@@ -112,7 +112,7 @@ generate_compose_file() {
         MODS_DIR="mods-space-age"
         echo "Space Age DLC: enabled"
     else
-        DLC_STRIP="rm -rf /opt/factorio/data/elevated-rails /opt/factorio/data/quality /opt/factorio/data/space-age && "
+        DLC_STRIP="rm -rf /opt/factorio/data/elevated-rails /opt/factorio/data/quality /opt/factorio/data/recycler /opt/factorio/data/space-age && "
         MODS_DIR="mods"
     fi
 
@@ -146,7 +146,7 @@ EOF
         
         cat >> docker-compose.yml << EOF
   factorio_${i}:
-    image: factoriotools/factorio:2.0.73
+    image: factoriotools/factorio:${FLE_FACTORIO_VERSION:-2.1.24}
     platform: \${DOCKER_PLATFORM:-linux/amd64}
     command: /bin/sh -c '${DLC_STRIP}exec ${EMULATOR} /opt/factorio/bin/x64/factorio ${COMMAND}
       ${BIND_ARG} --server-settings /opt/factorio/config/server-settings.json --map-gen-settings

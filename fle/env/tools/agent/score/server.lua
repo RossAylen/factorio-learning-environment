@@ -59,19 +59,22 @@ local function get_product_list()
   local rocket_silos = {}
   for k, entity in pairs (entities) do
     if entity.type == "rocket-silo" and entity.fixed_recipe then
+      -- 2.1: fixed_recipe may not name a recipe prototype; skip that silo instead of
+      -- returning nil for the whole product list
       local recipe = recipes[entity.fixed_recipe]
-      if not recipe then return end
-      local required_parts = entity.rocket_parts_required
-      local list = {}
-      for k, product in pairs (recipe.products) do
-        local product_amount = util.product_amount(product)
-        if product_amount > 0 then
-          product_amount = product_amount * required_parts
-          list[product.name] = product_amount
+      if recipe then
+        local required_parts = entity.rocket_parts_required
+        local list = {}
+        for k, product in pairs (recipe.products) do
+          local product_amount = util.product_amount(product)
+          if product_amount > 0 then
+            product_amount = product_amount * required_parts
+            list[product.name] = product_amount
+          end
         end
+        list["energy"] = recipe.energy
+        table.insert(rocket_silos, list)
       end
-      list["energy"] = recipe.energy
-      table.insert(rocket_silos, list)
     end
   end
   for k, item in pairs (items) do
@@ -332,50 +335,6 @@ end
 
 -- dump() is provided globally by mods/utils.lua; do not redefine it here.
 
--- Calculate the total value of harvested items (raw resources gathered manually or by drills)
-local function get_harvested_value(price_list)
-    local harvested_items = storage.harvested_items or {}
-    local total_value = 0
-    for name, amount in pairs(harvested_items) do
-        local price = price_list[name]
-        if price then
-            total_value = total_value + (price * amount)
-        end
-    end
-    return total_value
-end
-
--- Calculate the net value of manually crafted items (output value - input value)
-local function get_crafted_net_value(price_list)
-    local crafted_items = storage.crafted_items or {}
-    local total_net_value = 0
-    for _, craft_stats in ipairs(crafted_items) do
-        local output_value = 0
-        local input_value = 0
-        -- Sum output values
-        if craft_stats.outputs then
-            for name, amount in pairs(craft_stats.outputs) do
-                local price = price_list[name]
-                if price then
-                    output_value = output_value + (price * amount)
-                end
-            end
-        end
-        -- Sum input values
-        if craft_stats.inputs then
-            for name, amount in pairs(craft_stats.inputs) do
-                local price = price_list[name]
-                if price then
-                    input_value = input_value + (price * amount)
-                end
-            end
-        end
-        -- Net value is output minus input (value added by crafting)
-        total_net_value = total_net_value + (output_value - input_value)
-    end
-    return total_net_value
-end
-
 storage.goal = nil
 
 local scores = production_score.get_production_scores()
@@ -383,30 +342,10 @@ if scores then
     storage.initial_score = scores
 end
 
--- Store initial harvested and crafted values for delta calculation
-local price_list = production_score.generate_price_list()
-storage.initial_harvested_value = get_harvested_value(price_list)
-storage.initial_crafted_net_value = get_crafted_net_value(price_list)
-
 storage.actions.score = function()
-    local price_list = production_score.generate_price_list()
     local prod_score = production_score.get_production_scores()
-    local total_score = prod_score["player"] - storage.initial_score["player"]
-    prod_score["player"] = total_score
-
-    -- Calculate automated production score = total - harvested - crafted_net_value
-    -- This represents only the value created by automated machines
-    local current_harvested_value = get_harvested_value(price_list)
-    local current_crafted_net_value = get_crafted_net_value(price_list)
-
-    -- Delta from initial values
-    local harvested_delta = current_harvested_value - (storage.initial_harvested_value or 0)
-    local crafted_delta = current_crafted_net_value - (storage.initial_crafted_net_value or 0)
-
-    -- Automated score = total production score minus manual contributions
-    local automated_score = total_score - harvested_delta - crafted_delta
-    prod_score["automated"] = math.floor(automated_score)
-
+    prod_score["player"] = prod_score["player"] - storage.initial_score["player"]
+    
     -- Try to get goal description from first player if available, otherwise skip
     local goal_description = nil
     if #game.players > 0 and game.players[1] and game.players[1].valid then

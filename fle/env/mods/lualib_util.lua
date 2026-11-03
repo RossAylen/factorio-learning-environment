@@ -568,7 +568,9 @@ function util.parse_energy(energy)
 end
 
 function util.product_amount(product)
-  return product.probability * (product.amount or ((product.amount_min + product.amount_max) / 2))
+  -- 2.1 omits probability when it is 1, and products can lack amounts (e.g. research progress)
+  local amount = product.amount or (product.amount_min and product.amount_max and (product.amount_min + product.amount_max) / 2) or 0
+  return (product.probability or 1) * amount
 end
 
 function util.empty_sprite(animation_length)
