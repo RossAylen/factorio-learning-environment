@@ -72,9 +72,18 @@ storage.actions.insert_item = function(player_index, insert_item, count, x, y, t
             return item_prototype and not item_prototype.has_flag("only-in-cursor")
 
         elseif entity.type == "lab" then
-            -- Check if the item is a science pack
+            -- A lab takes what its prototype lists as lab_inputs. (2.0 science packs were
+            -- "tool" items; 2.1 made them plain items, so a type check refuses them.)
             local item_prototype = prototypes.item[item_name]
-            return item_prototype and item_prototype.type == "tool"
+            if not item_prototype then return false end
+            local ok, inputs = pcall(function() return entity.prototype.lab_inputs end)
+            if ok and inputs then
+                for _, name in pairs(inputs) do
+                    if name == item_name then return true end
+                end
+                return false
+            end
+            return item_prototype.type == "tool"
 
         elseif entity.type == "assembling-machine" then
             -- Check if it's a module first

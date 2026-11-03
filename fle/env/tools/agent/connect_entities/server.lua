@@ -1791,7 +1791,14 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
         if v then
             local ents = surface.find_entities_filtered{area = {{x - 0.45, y - 0.45}, {x + 0.45, y + 0.45}}}
             for _, e in pairs(ents) do
-                if not UG_IGNORE_TYPES[e.type] then v = false break end
+                if not UG_IGNORE_TYPES[e.type] then
+                    if e.type == "tree" or (e.type == "simple-entity" and string.find(e.name, "rock")) then
+                        v = "clear"   -- passable: the character mines it before placing
+                    else
+                        v = false
+                        break
+                    end
+                end
             end
         end
         free_cache[k] = v
@@ -1799,7 +1806,10 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
     end
     local function passable(x, y)
         local k = key(x, y)
-        return k == skey or k == tkey or tile_free(x, y)
+        return k == skey or k == tkey or tile_free(x, y) ~= false
+    end
+    local function clear_cost(x, y)
+        return (tile_free(x, y) == "clear") and 3 or 0
     end
 
     -- pipes: a surface pipe next to a foreign fluid entity would join its network
@@ -1897,7 +1907,7 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
             if kind == 1 then
                 local nx, ny = x + UG_DIRS[a][1], y + UG_DIRS[a][2]
                 if in_box(nx, ny) and passable(nx, ny) then
-                    relax(cur, nx, ny, a, 0, 1 + fluid_penalty(nx, ny), 'surface')
+                    relax(cur, nx, ny, a, 0, 1 + fluid_penalty(nx, ny) + clear_cost(nx, ny), 'surface')
                 end
             else
                 for d = 1, 4 do
@@ -1905,7 +1915,7 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
                         local nx, ny = x + UG_DIRS[d][1], y + UG_DIRS[d][2]
                         if in_box(nx, ny) and passable(nx, ny) then
                             local turn = (a ~= 0 and d ~= a) and TURN_COST or 0
-                            relax(cur, nx, ny, d, 0, 1 + turn + fluid_penalty(nx, ny), 'surface')
+                            relax(cur, nx, ny, d, 0, 1 + turn + fluid_penalty(nx, ny) + clear_cost(nx, ny), 'surface')
                         end
                     end
                 end
@@ -1915,9 +1925,9 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
                     for k2 = 2, maxd do
                         local ex, ey = x + dx * k2, y + dy * k2
                         if not in_box(ex, ey) then break end
-                        if not (ex == tx and ey == ty) and not (ex == sx and ey == sy) and tile_free(ex, ey)
+                        if not (ex == tx and ey == ty) and not (ex == sx and ey == sy) and tile_free(ex, ey) ~= false
                            and span_clear(x, y, a, k2) then
-                            relax(cur, ex, ey, a, 1, jump_cost(k2), 'jump')
+                            relax(cur, ex, ey, a, 1, jump_cost(k2) + clear_cost(ex, ey), 'jump')
                         end
                     end
                 end
@@ -1966,7 +1976,7 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
         local existing = surface.find_entities_filtered{position = {p.x, p.y}, name = p.name}
         if #existing > 0 then
             p.existing = existing[1]
-        elseif (pk == skey or pk == tkey) and not tile_free(p.x, p.y) then
+        elseif (pk == skey or pk == tkey) and tile_free(p.x, p.y) == false then
             p.skip = true
         else
             need[p.name] = (need[p.name] or 0) + 1
@@ -2001,6 +2011,12 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
             p.entity = p.existing
         elseif not p.skip then
             player.teleport({p.x + 2, p.y + 2})
+            for _, obstacle in pairs(surface.find_entities_filtered{
+                    area = {{p.x - 0.45, p.y - 0.45}, {p.x + 0.45, p.y + 0.45}}, type = {"tree", "simple-entity"}}) do
+                if obstacle.valid and (obstacle.type == "tree" or string.find(obstacle.name, "rock")) then
+                    if not player.mine_entity(obstacle, true) and obstacle.valid then obstacle.destroy() end
+                end
+            end
             local spec = {name = p.name, position = {p.x, p.y}, direction = p.dir, force = player.force,
                           move_stuck_players = true}
             if p.name == ug and not is_pipe then
