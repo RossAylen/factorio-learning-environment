@@ -144,11 +144,23 @@ def consolidate_underground_belts(belt_groups):
                         "index": i,
                     }
 
+        # Both ends of a linked pair carry connected_to (each names the other), and the
+        # partner may be outside this group (e.g. a radius cut): pair from the input end
+        # only, and only when the partner is present (was a KeyError on the partner id).
+        by_id = {b.id: b for b in group.belts if isinstance(b, UndergroundBelt)}
+        paired_exits = set()
         for i, belt in enumerate(group.belts):
-            if isinstance(belt, UndergroundBelt):
-                if belt.connected_to:
-                    underground_pairs[belt.connected_to]["exit"] = belt
-                    underground_pairs[belt.id]["entrance"] = belt
+            if (
+                isinstance(belt, UndergroundBelt)
+                and belt.is_input
+                and belt.connected_to in by_id
+            ):
+                underground_pairs[belt.id]["entrance"] = belt
+                underground_pairs[belt.id]["exit"] = by_id[belt.connected_to]
+                paired_exits.add(belt.connected_to)
+        for i, belt in enumerate(group.belts):
+            if isinstance(belt, UndergroundBelt) and belt.id in paired_exits:
+                removed_indices.add(i)
 
         # Third pass: create consolidated underground belts and build new belt list
         for i, belt in enumerate(group.belts):

@@ -18,7 +18,7 @@ local default_connect_types = {
     ['pipe-to-ground'] = 'pipe',
     ['underground-belt'] = 'transport-belt',
     ['express-underground-belt'] = 'express-transport-belt',
-    ['fast-underground-belt'] = 'fast-underground-belt',
+    ['fast-underground-belt'] = 'fast-transport-belt',
 }
 
 local underground_ranges = {
@@ -1668,6 +1668,427 @@ local function connect_entities_with_validation(player_index, source_x, source_y
 end
 
 
+
+-- ===================================================================================
+-- Underground-aware router (pipes + pipe-to-ground, belts + underground belts).
+--
+-- The old route took a surface A* path and afterwards swapped straight runs for
+-- underground pairs. That cannot cross obstacles (the surface path already went around
+-- them) and it laid pairs with wrong directions / overlapping spans, so fluid never
+-- arrived. This router searches the tile grid directly: from any tile the path can step
+-- to a neighbour (a surface piece) or place an entrance and jump up to the prototype's
+-- max underground distance in the travel direction, over anything, to a free exit tile.
+-- After placement every pair is verified in game (pipes are flipped once if needed).
+-- Called by storage.actions.connect_entities when path_handle < 0.
+-- ===================================================================================
+
+local UG_FALLBACK_RANGE = {
+    ['pipe-to-ground'] = 10,
+    ['underground-belt'] = 5,
+    ['fast-underground-belt'] = 7,
+    ['express-underground-belt'] = 9,
+}
+local UG_SURFACE = {
+    ['pipe-to-ground'] = 'pipe',
+    ['underground-belt'] = 'transport-belt',
+    ['fast-underground-belt'] = 'fast-transport-belt',
+    ['express-underground-belt'] = 'express-transport-belt',
+}
+local UG_IGNORE_TYPES = {
+    ['resource'] = true, ['character'] = true, ['corpse'] = true, ['character-corpse'] = true,
+    ['particle'] = true, ['projectile'] = true, ['fire'] = true, ['stream'] = true, ['beam'] = true,
+    ['smoke-with-trigger'] = true, ['explosion'] = true, ['highlight-box'] = true,
+    ['speech-bubble'] = true, ['sticker'] = true, ['item-request-proxy'] = true,
+}
+local FLUID_TYPES = {
+    ['pipe'] = true, ['pipe-to-ground'] = true, ['pump'] = true, ['offshore-pump'] = true,
+    ['storage-tank'] = true,
+}
+-- N, E, S, W as {dx, dy, defines.direction}
+local UG_DIRS = { {0, -1, 0}, {1, 0, 4}, {0, 1, 8}, {-1, 0, 12} }
+local UG_OPP = {3, 4, 1, 2}
+
+local function ug_max_distance(ug)
+    local ok, d = pcall(function()
+        local proto = prototypes.entity[ug]
+        if ug == 'pipe-to-ground' then
+            for _, fb in pairs(proto.fluidbox_prototypes) do
+                for _, pc in pairs(fb.pipe_connections) do
+                    if pc.connection_type == 'underground' and pc.max_underground_distance then
+                        return pc.max_underground_distance
+                    end
+                end
+            end
+            return nil
+        end
+        return proto.max_underground_distance
+    end)
+    if ok and d and d > 1 then return d end
+    return UG_FALLBACK_RANGE[ug] or 4
+end
+
+-- binary min-heap of {f, key}
+local function heap_push(h, f, key)
+    local n = #h + 1
+    h[n] = {f, key}
+    while n > 1 do
+        local p = math.floor(n / 2)
+        if h[p][1] <= h[n][1] then break end
+        h[p], h[n] = h[n], h[p]
+        n = p
+    end
+end
+local function heap_pop(h)
+    local top = h[1]
+    local last = table.remove(h)
+    if #h > 0 then
+        h[1] = last
+        local n, size = 1, #h
+        while true do
+            local l, r, m = 2 * n, 2 * n + 1, n
+            if l <= size and h[l][1] < h[m][1] then m = l end
+            if r <= size and h[r][1] < h[m][1] then m = r end
+            if m == n then break end
+            h[m], h[n] = h[n], h[m]
+            n = m
+        end
+    end
+    return top
+end
+
+local function ug_route(player_index, source_x, source_y, target_x, target_y, connection_types, dry_run)
+    local player = storage.agent_characters[player_index]
+    local surface = player.surface
+    local ug, surf = nil, nil
+    for _, t in ipairs(connection_types) do
+        if UG_SURFACE[t] then ug = t else surf = t end
+    end
+    if not ug then error("ug_route needs an underground type") end
+    surf = surf or UG_SURFACE[ug]
+    local is_pipe = (ug == 'pipe-to-ground')
+    local maxd = ug_max_distance(ug)
+
+    local sx, sy = math.floor(source_x) + 0.5, math.floor(source_y) + 0.5
+    local tx, ty = math.floor(target_x) + 0.5, math.floor(target_y) + 0.5
+    local function key(x, y) return x .. "," .. y end
+    local skey, tkey = key(sx, sy), key(tx, ty)
+
+    local free_cache = {}
+    local function tile_free(x, y)
+        local k = key(x, y)
+        local v = free_cache[k]
+        if v ~= nil then return v end
+        v = true
+        local tile = surface.get_tile(x, y)
+        if not tile or not tile.valid then
+            v = false
+        else
+            local ok, wet = pcall(function() return tile.collides_with("water_tile") end)
+            if (ok and wet) or (not ok and string.find(tile.name, "water")) or tile.name == "out-of-map" then
+                v = false
+            end
+        end
+        if v then
+            local ents = surface.find_entities_filtered{area = {{x - 0.45, y - 0.45}, {x + 0.45, y + 0.45}}}
+            for _, e in pairs(ents) do
+                if not UG_IGNORE_TYPES[e.type] then v = false break end
+            end
+        end
+        free_cache[k] = v
+        return v
+    end
+    local function passable(x, y)
+        local k = key(x, y)
+        return k == skey or k == tkey or tile_free(x, y)
+    end
+
+    -- pipes: a surface pipe next to a foreign fluid entity would join its network
+    local adj_cache = {}
+    local function fluid_penalty(x, y)
+        if not is_pipe then return 0 end
+        local k = key(x, y)
+        if math.max(math.abs(x - sx), math.abs(y - sy)) <= 2 or math.max(math.abs(x - tx), math.abs(y - ty)) <= 2 then
+            return 0
+        end
+        local v = adj_cache[k]
+        if v ~= nil then return v end
+        v = 0
+        local ents = surface.find_entities_filtered{area = {{x - 1.4, y - 1.4}, {x + 1.4, y + 1.4}}}
+        for _, e in pairs(ents) do
+            if FLUID_TYPES[e.type] then
+                local dx, dy = math.abs(e.position.x - x), math.abs(e.position.y - y)
+                if (dx < 0.6 and dy < 1.6) or (dy < 0.6 and dx < 1.6) then v = 40 break end
+            end
+        end
+        adj_cache[k] = v
+        return v
+    end
+
+    -- an underground of the same kind on the same axis between entrance and exit would steal the pairing
+    local function span_clear(x, y, d, k2)
+        local dx, dy, dir = UG_DIRS[d][1], UG_DIRS[d][2], UG_DIRS[d][3]
+        for i = 1, k2 - 1 do
+            local ents = surface.find_entities_filtered{position = {x + dx * i, y + dy * i}, name = ug}
+            for _, e in pairs(ents) do
+                if (e.direction % 8) == (dir % 8) then return false end
+            end
+        end
+        return true
+    end
+
+    local function jump_cost(k2)
+        if is_pipe then return 2 + 0.3 * k2 end
+        return 3 + k2
+    end
+
+    -- search box
+    local margin = 40
+    local minx, maxx = math.min(sx, tx) - margin, math.max(sx, tx) + margin
+    local miny, maxy = math.min(sy, ty) - margin, math.max(sy, ty) + margin
+    local function in_box(x, y) return x >= minx and x <= maxx and y >= miny and y <= maxy end
+    -- Few turns: every turn costs TURN_COST tiles, and the heuristic adds the turns that are
+    -- unavoidable (not lined up with the goal on either axis -> at least one more turn).
+    local TURN_COST = 5
+    local function h(x, y, a)
+        local dx, dy = tx - x, ty - y
+        local base = math.abs(dx) + math.abs(dy)
+        if dx ~= 0 and dy ~= 0 then return base + TURN_COST end
+        if a and a ~= 0 and base > 0 then
+            -- lined up, but heading the wrong way still needs a turn
+            local ux, uy = UG_DIRS[a][1], UG_DIRS[a][2]
+            if ux * dx + uy * dy <= 0 then return base + TURN_COST end
+        end
+        return base
+    end
+
+    -- state: x, y, a (arrival dir 0..4, 0 = start), kind (0 surface tile, 1 underground exit)
+    local function skey4(x, y, a, kind) return x .. "," .. y .. "," .. a .. "," .. kind end
+    local states, g, parent, closed = {}, {}, {}, {}
+    local open = {}
+    local s0 = skey4(sx, sy, 0, 0)
+    states[s0] = {sx, sy, 0, 0}
+    g[s0] = 0
+    heap_push(open, h(sx, sy, 0), s0)
+
+    local function relax(from, x, y, a, kind, cost, move)
+        local k = skey4(x, y, a, kind)
+        if closed[k] then return end
+        local ng = g[from] + cost
+        if g[k] == nil or ng < g[k] then
+            g[k] = ng
+            states[k] = {x, y, a, kind}
+            parent[k] = {from, move}
+            heap_push(open, ng + h(x, y, a), k)
+        end
+    end
+
+    local goal = nil
+    local expansions, MAX_EXPANSIONS = 0, 400000
+    while #open > 0 do
+        local top = heap_pop(open)
+        local cur = top[2]
+        if not closed[cur] then
+            closed[cur] = true
+            expansions = expansions + 1
+            if expansions > MAX_EXPANSIONS then break end
+            local st = states[cur]
+            local x, y, a, kind = st[1], st[2], st[3], st[4]
+            if kind == 0 and x == tx and y == ty then goal = cur break end
+            if kind == 1 then
+                local nx, ny = x + UG_DIRS[a][1], y + UG_DIRS[a][2]
+                if in_box(nx, ny) and passable(nx, ny) then
+                    relax(cur, nx, ny, a, 0, 1 + fluid_penalty(nx, ny), 'surface')
+                end
+            else
+                for d = 1, 4 do
+                    if a == 0 or d ~= UG_OPP[a] then
+                        local nx, ny = x + UG_DIRS[d][1], y + UG_DIRS[d][2]
+                        if in_box(nx, ny) and passable(nx, ny) then
+                            local turn = (a ~= 0 and d ~= a) and TURN_COST or 0
+                            relax(cur, nx, ny, d, 0, 1 + turn + fluid_penalty(nx, ny), 'surface')
+                        end
+                    end
+                end
+                -- entrance here (not on the start or goal tile: those must be surface pieces)
+                if a ~= 0 and not (x == sx and y == sy) and not (x == tx and y == ty) then
+                    local dx, dy = UG_DIRS[a][1], UG_DIRS[a][2]
+                    for k2 = 2, maxd do
+                        local ex, ey = x + dx * k2, y + dy * k2
+                        if not in_box(ex, ey) then break end
+                        if not (ex == tx and ey == ty) and not (ex == sx and ey == sy) and tile_free(ex, ey)
+                           and span_clear(x, y, a, k2) then
+                            relax(cur, ex, ey, a, 1, jump_cost(k2), 'jump')
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if not goal then
+        error("\"Failed to find a path (underground router) from (" .. sx .. ", " .. sy .. ") to (" ..
+              tx .. ", " .. ty .. ") after " .. expansions .. " expansions\"")
+    end
+
+    -- rebuild: list of states from start to goal, with the move that left each one
+    local chain = {}
+    local k = goal
+    while k do
+        table.insert(chain, 1, k)
+        k = parent[k] and parent[k][1] or nil
+    end
+    local pieces = {}
+    for i, sk in ipairs(chain) do
+        local st = states[sk]
+        local x, y, a, kind = st[1], st[2], st[3], st[4]
+        local nxt = chain[i + 1]
+        local move_out = nxt and parent[nxt][2] or nil
+        local out_dir = nxt and states[nxt][3] or a
+        if out_dir == 0 then out_dir = 1 end
+        if kind == 1 then
+            local dir = UG_DIRS[a][3]
+            table.insert(pieces, {x = x, y = y, name = ug, role = 'exit',
+                                  dir = dir})
+        elseif move_out == 'jump' then
+            local dir = UG_DIRS[a][3]
+            if is_pipe then dir = UG_DIRS[UG_OPP[a]][3] end   -- a pipe-to-ground faces its above-ground side
+            table.insert(pieces, {x = x, y = y, name = ug, role = 'entrance', dir = dir})
+        else
+            table.insert(pieces, {x = x, y = y, name = surf, role = 'surface',
+                                  dir = is_pipe and 0 or UG_DIRS[out_dir][3]})
+        end
+    end
+
+    -- what actually needs placing (start/goal may already hold our piece, or be inside an entity)
+    local need = {}
+    local to_place = {}
+    for _, p in ipairs(pieces) do
+        local pk = key(p.x, p.y)
+        local existing = surface.find_entities_filtered{position = {p.x, p.y}, name = p.name}
+        if #existing > 0 then
+            p.existing = existing[1]
+        elseif (pk == skey or pk == tkey) and not tile_free(p.x, p.y) then
+            p.skip = true
+        else
+            need[p.name] = (need[p.name] or 0) + 1
+            table.insert(to_place, p)
+        end
+    end
+    local total = #to_place
+
+    if dry_run then
+        return {entities = {}, connected = true, number_of_entities = total}
+    end
+
+    for name, n in pairs(need) do
+        local have = player.get_item_count(name)
+        if have < n then
+            error("\"You do not have enough " .. name .. " in you inventory to complete this connection. Required number - " ..
+                  n .. ", Available in inventory - " .. have .. "\"")
+        end
+    end
+
+    -- walking time, like the old router
+    local last = player.position
+    for _, p in ipairs(pieces) do
+        storage.elapsed_ticks = storage.elapsed_ticks + storage.utils.calculate_movement_ticks(player, last, {x = p.x, y = p.y})
+        last = {x = p.x, y = p.y}
+    end
+
+    local placed = {}
+    local counter = 0
+    for _, p in ipairs(pieces) do
+        if p.existing then
+            p.entity = p.existing
+        elseif not p.skip then
+            player.teleport({p.x + 2, p.y + 2})
+            local spec = {name = p.name, position = {p.x, p.y}, direction = p.dir, force = player.force,
+                          move_stuck_players = true}
+            if p.name == ug and not is_pipe then
+                spec.type = (p.role == 'entrance') and 'input' or 'output'
+            end
+            if not surface.can_place_entity{name = p.name, position = {p.x, p.y}, direction = p.dir, force = player.force} then
+                error("\"Cannot connect due to placement blockage at (" .. p.x .. ", " .. p.y .. ") for " .. p.name ..
+                      " (placed " .. counter .. " of " .. total .. ")\"")
+            end
+            local e = surface.create_entity(spec)
+            if not e then
+                error("\"create_entity failed for " .. p.name .. " at (" .. p.x .. ", " .. p.y .. ")\"")
+            end
+            player.remove_item({name = p.name, count = 1})
+            counter = counter + 1
+            p.entity = e
+            table.insert(placed, e)
+        end
+    end
+
+    -- verify every underground pair; pipes get one flip of both ends if the guess was wrong
+    local function paired(a, b)
+        if not (a and b and a.valid and b.valid) then return false end
+        if a.type == 'underground-belt' then return a.neighbours == b end
+        local ok, nb = pcall(function() return a.neighbours end)
+        if not ok or not nb then return false end
+        for _, group in pairs(nb) do
+            if type(group) == 'table' then
+                for _, e in pairs(group) do if e == b then return true end end
+            elseif group == b then
+                return true
+            end
+        end
+        return false
+    end
+    local bad = 0
+    for i, p in ipairs(pieces) do
+        if p.role == 'entrance' then
+            local q = pieces[i + 1]
+            local ok = paired(p.entity, q and q.entity)
+            if not ok and is_pipe and p.entity and q and q.entity then
+                p.entity.direction = (p.entity.direction + 8) % 16
+                q.entity.direction = (q.entity.direction + 8) % 16
+                ok = paired(p.entity, q.entity)
+                if not ok then
+                    p.entity.direction = (p.entity.direction + 8) % 16
+                    q.entity.direction = (q.entity.direction + 8) % 16
+                end
+            end
+            if not ok then bad = bad + 1 end
+        end
+    end
+
+    local connected = (bad == 0)
+    if is_pipe and connected then
+        local first, lastp = nil, nil
+        for _, p in ipairs(pieces) do
+            if p.entity and p.entity.valid then
+                first = first or p.entity
+                lastp = p.entity
+            end
+        end
+        if first and lastp then
+            local ok, same = pcall(function()
+                return first.fluidbox.get_fluid_segment_id(1) == lastp.fluidbox.get_fluid_segment_id(1)
+            end)
+            if ok then connected = same end
+        end
+    end
+    if bad > 0 then
+        error("\"Underground router: " .. bad .. " underground pair(s) did not link after placement\"")
+    end
+
+    local serialized = {}
+    if not is_pipe and #placed > 0 then
+        local group = serialize_belt_group(placed[1])
+        if group then serialized = group end
+    end
+    if #serialized == 0 then
+        for _, p in ipairs(pieces) do
+            if p.entity and p.entity.valid then
+                table.insert(serialized, storage.utils.serialize_entity(p.entity))
+            end
+        end
+    end
+    return {entities = serialized, connected = connected, number_of_entities = counter}
+end
+
 -- Using the new shortest_path function.
 storage.actions.connect_entities = function(player_index, source_x, source_y, target_x, target_y, path_handle, connection_type_string, dry_run, number_of_connection_entities)
 
@@ -1675,6 +2096,10 @@ storage.actions.connect_entities = function(player_index, source_x, source_y, ta
     for item in string.gmatch(connection_type_string, "([^,]+)") do
         -- game.print(item)
         table.insert(connection_types, item)
+    end
+    -- path_handle < 0: the underground-aware router does its own search (see ug_route)
+    if tonumber(path_handle) and tonumber(path_handle) < 0 then
+        return ug_route(player_index, source_x, source_y, target_x, target_y, connection_types, dry_run)
     end
     --First do a dry run
     local result = connect_entities_with_validation(player_index, source_x, source_y, target_x, target_y, path_handle, connection_types, true)

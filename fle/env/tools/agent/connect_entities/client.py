@@ -509,83 +509,111 @@ class ConnectEntities(Tool):
         num_available = inventory.get(connection_prototype, 0)
 
         connection_type_names_values = list(connection_type_names.values())
+        underground_types = {
+            Prototype.UndergroundPipe,
+            Prototype.UndergroundBelt,
+            Prototype.FastUndergroundBelt,
+            Prototype.ExpressUndergroundBelt,
+        }
+        if connection_types & underground_types:
+            # Underground-aware router (server.lua ug_route): searches tiles with jumps over
+            # obstacles and checks the inventory per item itself, so path_handle=-1 and no
+            # shared entity count. Surface pieces first in the list = the default surface type.
+            ordered = sorted(
+                connection_type_names_values, key=lambda n: ("ground" in n or "underground" in n)
+            )
+            response, _ = self.execute(
+                self.player_index,
+                source_pos.x,
+                source_pos.y,
+                target_pos.x,
+                target_pos.y,
+                -1,
+                ",".join(ordered),
+                dry_run,
+                10**9,
+            )
+            result = PathResult(response)
+        else:
+            result = None
         # Determine connection strategy based on type
-        match connection_types:
-            case _ if connection_types & {Prototype.Pipe, Prototype.UndergroundPipe}:
-                pathing_radius = 0.5
-                self._extend_collision_boxes(source_pos, target_pos)
-                num_available = inventory.get(Prototype.Pipe, 0)
-                try:
-                    result = self._attempt_path_finding(
-                        source_pos,
-                        target_pos,
-                        connection_type_names_values,
-                        num_available,
-                        pathing_radius,
-                        dry_run,
-                    )
-                finally:
-                    self._clear_collision_boxes()
-            case _ if (
-                (
-                    connection_types
-                    & {Prototype.TransportBelt, Prototype.UndergroundBelt}
-                )
-                or (
-                    connection_types
-                    & {Prototype.FastTransportBelt, Prototype.FastUndergroundBelt}
-                )
-                or (
-                    connection_types
-                    & {Prototype.ExpressTransportBelt, Prototype.ExpressUndergroundBelt}
-                )
-            ):
-                pathing_radius = 0.5
-                result = self._attempt_path_finding(
-                    source_pos,
-                    target_pos,
-                    connection_type_names_values,
-                    num_available,
-                    pathing_radius,
-                    dry_run,
-                )
+        if result is None:
+          match connection_types:
+              case _ if connection_types & {Prototype.Pipe, Prototype.UndergroundPipe}:
+                  pathing_radius = 0.5
+                  self._extend_collision_boxes(source_pos, target_pos)
+                  num_available = inventory.get(Prototype.Pipe, 0)
+                  try:
+                      result = self._attempt_path_finding(
+                          source_pos,
+                          target_pos,
+                          connection_type_names_values,
+                          num_available,
+                          pathing_radius,
+                          dry_run,
+                      )
+                  finally:
+                      self._clear_collision_boxes()
+              case _ if (
+                  (
+                      connection_types
+                      & {Prototype.TransportBelt, Prototype.UndergroundBelt}
+                  )
+                  or (
+                      connection_types
+                      & {Prototype.FastTransportBelt, Prototype.FastUndergroundBelt}
+                  )
+                  or (
+                      connection_types
+                      & {Prototype.ExpressTransportBelt, Prototype.ExpressUndergroundBelt}
+                  )
+              ):
+                  pathing_radius = 0.5
+                  result = self._attempt_path_finding(
+                      source_pos,
+                      target_pos,
+                      connection_type_names_values,
+                      num_available,
+                      pathing_radius,
+                      dry_run,
+                  )
 
-                if not result.is_success:
-                    # Retry with modified parameters for belts
-                    source_pos_adjusted = self._adjust_belt_position(
-                        source_pos, source_entity
-                    )
-                    target_pos_adjusted = self._adjust_belt_position(
-                        target_pos, target_entity
-                    )
-                    adjusted_result = self._attempt_path_finding(
-                        source_pos_adjusted,
-                        target_pos_adjusted,
-                        connection_type_names_values,
-                        num_available,
-                        2,
-                        dry_run,
-                        False,
-                    )
-                    if adjusted_result.is_success:
-                        result = adjusted_result
-                    pass
+                  if not result.is_success:
+                      # Retry with modified parameters for belts
+                      source_pos_adjusted = self._adjust_belt_position(
+                          source_pos, source_entity
+                      )
+                      target_pos_adjusted = self._adjust_belt_position(
+                          target_pos, target_entity
+                      )
+                      adjusted_result = self._attempt_path_finding(
+                          source_pos_adjusted,
+                          target_pos_adjusted,
+                          connection_type_names_values,
+                          num_available,
+                          2,
+                          dry_run,
+                          False,
+                      )
+                      if adjusted_result.is_success:
+                          result = adjusted_result
+                      pass
 
-            case _:  # Power poles
-                pathing_radius = 4  # Larger radius for poles
-                self._extend_collision_boxes(source_pos, target_pos)
-                try:
-                    result = self._attempt_path_finding(
-                        source_pos,
-                        target_pos,
-                        connection_type_names_values,
-                        num_available,
-                        pathing_radius,
-                        dry_run,
-                        True,
-                    )
-                finally:
-                    self._clear_collision_boxes()
+              case _:  # Power poles
+                  pathing_radius = 4  # Larger radius for poles
+                  self._extend_collision_boxes(source_pos, target_pos)
+                  try:
+                      result = self._attempt_path_finding(
+                          source_pos,
+                          target_pos,
+                          connection_type_names_values,
+                          num_available,
+                          pathing_radius,
+                          dry_run,
+                          True,
+                      )
+                  finally:
+                      self._clear_collision_boxes()
 
         if not result.is_success:
             raise Exception(
