@@ -799,9 +799,19 @@ class FactorioNamespace:
                         and func._cached_func
                     ):
                         # Get the function's globals and update our eval_dict with any changes
+                        # Only names the function itself rebinds (global x; x = ...).
+                        # Syncing every differing global copied stale helpers (and helpers
+                        # wrapped without their module globals) over the script namespace.
+                        import dis as _dis
+
+                        assigned = {
+                            ins.argval
+                            for ins in _dis.get_instructions(func._cached_func)
+                            if ins.opname in ("STORE_GLOBAL", "DELETE_GLOBAL")
+                        }
                         func_globals = func._cached_func.__globals__
                         for name, value in func_globals.items():
-                            if not name.startswith("_") and name in eval_dict:
+                            if name in assigned and not name.startswith("_") and name in eval_dict:
                                 if eval_dict[name] != value:
                                     eval_dict[name] = value
                                     self.persistent_vars[name] = wrap_for_serialization(
