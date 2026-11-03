@@ -30,7 +30,9 @@ def get_local_container_ips() -> tuple[List[str], List[int], List[int]]:
             import re
 
             cmdline = " ".join(container_info[0]["Config"].get("Cmd") or [])
-            game = re.search(r"--port (\d+)", cmdline)
+            game = re.search(r"--port (\d+)", cmdline) or re.search(
+                r"--bind \S+:(\d+)", cmdline
+            )
             rcon = re.search(r"--rcon-port (\d+)", cmdline)
             if game and rcon:
                 udp_ports.append(int(game.group(1)))

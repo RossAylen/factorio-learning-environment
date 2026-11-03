@@ -57,6 +57,18 @@ def setup_compose_cmd():
     sys.exit(1)
 
 
+def _lan_ip() -> str:
+    """Primary LAN address of this host (the source address of a default-route socket)."""
+    import socket
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("192.0.2.1", 9))
+        return sock.getsockname()[0]
+    finally:
+        sock.close()
+
+
 class ComposeGenerator:
     """Compose YAML generator with centralized path handling."""
 
@@ -119,7 +131,13 @@ class ComposeGenerator:
             # Use only the basename inside the command
             launch_command = f"--start-server {Path(self.save_file).name}"
         args = [
-            f"--port {game_port}",
+            # host network: bind to the LAN address so the LAN listing advertises a
+            # joinable address (a bare --port advertises 0.0.0.0:PORT)
+            (
+                f"--bind {os.environ.get('FLE_BIND_IP') or _lan_ip()}:{game_port}"
+                if self.host_network()
+                else f"--port {game_port}"
+            ),
             f"--rcon-port {rcon_port}",
             f"--rcon-password {self.rcon_password}",
             "--server-settings /opt/factorio/config/server-settings.json",

@@ -1,6 +1,6 @@
 {
-  "name": "Name of the game as it will appear in the game listing",
-  "description": "Description of the game that will appear in the listing",
+  "name": "Claude plays Space Age (FLE)",
+  "description": "Factorio Learning Environment: Claude playing by script. Please join as a spectator.",
   "tags": [
     "game",
     "tags"

@@ -132,8 +132,13 @@ EOF
         if [ "${FLE_HOST_NETWORK:-}" = "1" ]; then
             GAME_PORT=$UDP_PORT; RCON_PORT=$TCP_PORT
             NETWORK_BLOCK="    network_mode: host"
+            # Bind to the LAN address so the LAN listing advertises a joinable address
+            # (with a bare --port the server advertises 0.0.0.0:PORT).
+            LAN_IP="${FLE_BIND_IP:-$(hostname -I | awk '{print $1}')}"
+            BIND_ARG="--bind ${LAN_IP}:${GAME_PORT}"
         else
             GAME_PORT=34197; RCON_PORT=27015
+            BIND_ARG="--port 34197"
             NETWORK_BLOCK="    ports:
     - ${UDP_PORT}:34197/udp
     - ${TCP_PORT}:27015/tcp"
@@ -144,7 +149,7 @@ EOF
     image: factoriotools/factorio:2.0.73
     platform: \${DOCKER_PLATFORM:-linux/amd64}
     command: /bin/sh -c '${DLC_STRIP}exec ${EMULATOR} /opt/factorio/bin/x64/factorio ${COMMAND}
-      --port ${GAME_PORT} --server-settings /opt/factorio/config/server-settings.json --map-gen-settings
+      ${BIND_ARG} --server-settings /opt/factorio/config/server-settings.json --map-gen-settings
       /opt/factorio/config/map-gen-settings.json --map-settings /opt/factorio/config/map-settings.json
       --server-banlist /opt/factorio/config/server-banlist.json --rcon-port ${RCON_PORT}
       --rcon-password "factorio" --server-whitelist /opt/factorio/config/server-whitelist.json
