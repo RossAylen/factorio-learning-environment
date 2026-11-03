@@ -149,8 +149,16 @@ class GetEntities(Tool):
                 try:
                     if "inventory" in entity_data:
                         if isinstance(entity_data["inventory"], list):
+                            # one inventory per part (a splitter has two): merge the counts.
+                            # (Extending the list while iterating it never ended once a part
+                            # held items - it kept appending item names, then their letters.)
+                            merged = {}
                             for inv in entity_data["inventory"]:
-                                entity_data["inventory"] += inv
+                                if isinstance(inv, dict):
+                                    for k, v in inv.items():
+                                        if isinstance(v, (int, float)):
+                                            merged[k] = merged.get(k, 0) + v
+                            entity_data["inventory"] = merged
                         else:
                             inventory_data = {
                                 k: v
