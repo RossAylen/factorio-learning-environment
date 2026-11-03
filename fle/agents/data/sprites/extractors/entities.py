@@ -229,6 +229,30 @@ class EntitySpritesheetExtractor:
         # Get dimensions
         width = width_x or picture.get("width", image.width)
         height = height_y or picture.get("height", image.height)
+        src_x = x_offset or picture.get("x", 0)
+        src_y = y_offset or picture.get("y", 0)
+
+        # Factorio 2.0 data describes the high-res sheets (frame sizes at scale 0.5), while
+        # the sprite maps also hold the old low-res sheet under the plain name: fall back to
+        # the hr- sheet when the frame does not fit.
+        if src_x + width > image.width or src_y + height > image.height:
+            fn = picture["filename"]
+            head, _, base = fn.rpartition("/")
+            try:
+                hr = self.get_file(f"{head}/hr-{base}")
+                if src_x + width <= hr.width and src_y + height <= hr.height:
+                    image = hr
+            except FileNotFoundError:
+                pass
+        if src_x + width > image.width or src_y + height > image.height:
+            return None
+
+        cropped = image.crop((src_x, src_y, src_x + width, src_y + height))
+        scale = picture.get("scale", 1) or 1
+        if scale != 1:
+            width = max(1, round(width * scale))
+            height = max(1, round(height * scale))
+            cropped = cropped.resize((width, height), Image.LANCZOS)
 
         # Calculate center position
         center_x = width / 2
@@ -251,14 +275,7 @@ class EntitySpritesheetExtractor:
         # Calculate position to draw at
         delta_x = round(canvas_width / 2) - center_x
         delta_y = round(canvas_height / 2) - center_y
-
-        # Extract the specified region from source image
-        src_x = x_offset or picture.get("x", 0)
-        src_y = y_offset or picture.get("y", 0)
-
-        if src_x + width <= image.width and src_y + height <= image.height:
-            cropped = image.crop((src_x, src_y, src_x + width, src_y + height))
-            result.paste(cropped, (int(delta_x), int(delta_y)), cropped)
+        result.paste(cropped, (int(delta_x), int(delta_y)), cropped)
 
         return result
 
@@ -310,6 +327,25 @@ class EntitySpritesheetExtractor:
                         self.extract_from_picture(name, value, suffix)
                     else:
                         self.extract_from_picture(name, value, suffix + f"_{key}")
+
+    def _extract_main_layer(self, name: str, picture: Any, suffix: str = ""):
+        """Directional/layered picture -> <name>[_dir].png body (+ _shadow)."""
+        if not isinstance(picture, dict):
+            return
+        if "north" in picture:
+            for direction in self.directions:
+                if direction in picture:
+                    self._extract_main_layer(name, picture[direction], suffix + "_" + direction)
+        elif "layers" in picture:
+            layers = [l for l in picture["layers"] if isinstance(l, dict)]
+            main = [l for l in layers if not l.get("draw_as_shadow")]
+            shadow = [l for l in layers if l.get("draw_as_shadow")]
+            if main:
+                self._extract_main_layer(name, main[0], suffix)
+            if shadow:
+                self._extract_main_layer(name, shadow[0], suffix)
+        else:
+            self.extract_from_picture(name, picture, suffix)
 
     # Entity-specific extraction methods
     def transport_belt(self, entity: str, data: Dict):
@@ -1446,6 +1482,16 @@ class EntitySpritesheetExtractor:
                     self.extract_from_picture(entity_name, entity_data[prop])
                 extracted = True
                 break
+
+        # Factorio 2.0 moved the art of furnaces, mining drills, offshore pumps, ... under
+        # graphics_set. Take the first non-shadow layer as the body and the first shadow layer.
+        if not extracted and isinstance(entity_data.get("graphics_set"), dict):
+            gs = entity_data["graphics_set"]
+            for prop in ("animation", "idle_animation"):
+                if prop in gs:
+                    self._extract_main_layer(entity_name, gs[prop], "")
+                    extracted = True
+                    break
 
         if not extracted:
             print(f"TODO: {entity_name}")
