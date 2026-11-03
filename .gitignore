@@ -83,4 +83,5 @@ summary_cache/
 cortex
 CLAUDE.md
 /server/CLAUDE.md
-configsfle/cluster/config/server-settings-*.json
+configs
+fle/cluster/config/server-settings-*.json
