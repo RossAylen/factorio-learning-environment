@@ -1727,6 +1727,52 @@ local function ug_max_distance(ug)
     return UG_FALLBACK_RANGE[ug] or 4
 end
 
+
+-- Tile occupancy shared by every route profile: false = blocked (water, out of map, any real
+-- entity), "clear" = tree or rock (passable; the character mines it before placing), true = free.
+local function route_tile_checker(surface)
+    local cache = {}
+    return function(x, y)
+        local k = x .. "," .. y
+        local v = cache[k]
+        if v ~= nil then return v end
+        v = true
+        local tile = surface.get_tile(x, y)
+        if not tile or not tile.valid then
+            v = false
+        else
+            local ok, wet = pcall(function() return tile.collides_with("water_tile") end)
+            if (ok and wet) or (not ok and string.find(tile.name, "water")) or tile.name == "out-of-map" then
+                v = false
+            end
+        end
+        if v then
+            local ents = surface.find_entities_filtered{area = {{x - 0.45, y - 0.45}, {x + 0.45, y + 0.45}}}
+            for _, e in pairs(ents) do
+                if not UG_IGNORE_TYPES[e.type] then
+                    if e.type == "tree" or (e.type == "simple-entity" and string.find(e.name, "rock")) then
+                        v = "clear"
+                    else
+                        v = false
+                        break
+                    end
+                end
+            end
+        end
+        cache[k] = v
+        return v
+    end
+end
+
+local function route_clear_obstacles(player, surface, x, y)
+    for _, obstacle in pairs(surface.find_entities_filtered{
+            area = {{x - 0.45, y - 0.45}, {x + 0.45, y + 0.45}}, type = {"tree", "simple-entity"}}) do
+        if obstacle.valid and (obstacle.type == "tree" or string.find(obstacle.name, "rock")) then
+            if not player.mine_entity(obstacle, true) and obstacle.valid then obstacle.destroy() end
+        end
+    end
+end
+
 -- binary min-heap of {f, key}
 local function heap_push(h, f, key)
     local n = #h + 1
@@ -1759,51 +1805,21 @@ end
 local function ug_route(player_index, source_x, source_y, target_x, target_y, connection_types, dry_run)
     local player = storage.agent_characters[player_index]
     local surface = player.surface
+    -- profile: surface piece, optional underground piece (jumps up to its prototype range)
     local ug, surf = nil, nil
     for _, t in ipairs(connection_types) do
         if UG_SURFACE[t] then ug = t else surf = t end
     end
-    if not ug then error("ug_route needs an underground type") end
     surf = surf or UG_SURFACE[ug]
-    local is_pipe = (ug == 'pipe-to-ground')
-    local maxd = ug_max_distance(ug)
+    local is_pipe = (surf == 'pipe')
+    local maxd = ug and ug_max_distance(ug) or 0
 
     local sx, sy = math.floor(source_x) + 0.5, math.floor(source_y) + 0.5
     local tx, ty = math.floor(target_x) + 0.5, math.floor(target_y) + 0.5
     local function key(x, y) return x .. "," .. y end
     local skey, tkey = key(sx, sy), key(tx, ty)
 
-    local free_cache = {}
-    local function tile_free(x, y)
-        local k = key(x, y)
-        local v = free_cache[k]
-        if v ~= nil then return v end
-        v = true
-        local tile = surface.get_tile(x, y)
-        if not tile or not tile.valid then
-            v = false
-        else
-            local ok, wet = pcall(function() return tile.collides_with("water_tile") end)
-            if (ok and wet) or (not ok and string.find(tile.name, "water")) or tile.name == "out-of-map" then
-                v = false
-            end
-        end
-        if v then
-            local ents = surface.find_entities_filtered{area = {{x - 0.45, y - 0.45}, {x + 0.45, y + 0.45}}}
-            for _, e in pairs(ents) do
-                if not UG_IGNORE_TYPES[e.type] then
-                    if e.type == "tree" or (e.type == "simple-entity" and string.find(e.name, "rock")) then
-                        v = "clear"   -- passable: the character mines it before placing
-                    else
-                        v = false
-                        break
-                    end
-                end
-            end
-        end
-        free_cache[k] = v
-        return v
-    end
+    local tile_free = route_tile_checker(surface)
     local function passable(x, y)
         local k = key(x, y)
         return k == skey or k == tkey or tile_free(x, y) ~= false
@@ -1831,6 +1847,31 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
             end
         end
         adj_cache[k] = v
+        return v
+    end
+
+    -- belts: a tile that an existing belt points into would side-load that belt onto the new line
+    local DIRV = {[0] = {0, -1}, [4] = {1, 0}, [8] = {0, 1}, [12] = {-1, 0}}
+    local feed_cache = {}
+    local function belt_penalty(x, y)
+        if is_pipe then return 0 end
+        if math.max(math.abs(x - sx), math.abs(y - sy)) <= 1 or math.max(math.abs(x - tx), math.abs(y - ty)) <= 1 then
+            return 0
+        end
+        local k = key(x, y)
+        local v = feed_cache[k]
+        if v ~= nil then return v end
+        v = 0
+        for _, e in pairs(surface.find_entities_filtered{area = {{x - 1.5, y - 1.5}, {x + 1.5, y + 1.5}},
+                                                         type = {"transport-belt", "underground-belt"}}) do
+            local dv = DIRV[e.direction]
+            local outputs = e.type == "transport-belt" or e.belt_to_ground_type == "output"
+            if dv and outputs and math.abs(e.position.x + dv[1] - x) < 0.1 and math.abs(e.position.y + dv[2] - y) < 0.1 then
+                v = 40
+                break
+            end
+        end
+        feed_cache[k] = v
         return v
     end
 
@@ -1907,7 +1948,7 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
             if kind == 1 then
                 local nx, ny = x + UG_DIRS[a][1], y + UG_DIRS[a][2]
                 if in_box(nx, ny) and passable(nx, ny) then
-                    relax(cur, nx, ny, a, 0, 1 + fluid_penalty(nx, ny) + clear_cost(nx, ny), 'surface')
+                    relax(cur, nx, ny, a, 0, 1 + fluid_penalty(nx, ny) + belt_penalty(nx, ny) + clear_cost(nx, ny), 'surface')
                 end
             else
                 for d = 1, 4 do
@@ -1915,12 +1956,12 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
                         local nx, ny = x + UG_DIRS[d][1], y + UG_DIRS[d][2]
                         if in_box(nx, ny) and passable(nx, ny) then
                             local turn = (a ~= 0 and d ~= a) and TURN_COST or 0
-                            relax(cur, nx, ny, d, 0, 1 + turn + fluid_penalty(nx, ny) + clear_cost(nx, ny), 'surface')
+                            relax(cur, nx, ny, d, 0, 1 + turn + fluid_penalty(nx, ny) + belt_penalty(nx, ny) + clear_cost(nx, ny), 'surface')
                         end
                     end
                 end
                 -- entrance here (not on the start or goal tile: those must be surface pieces)
-                if a ~= 0 and not (x == sx and y == sy) and not (x == tx and y == ty) then
+                if ug and a ~= 0 and not (x == sx and y == sy) and not (x == tx and y == ty) then
                     local dx, dy = UG_DIRS[a][1], UG_DIRS[a][2]
                     for k2 = 2, maxd do
                         local ex, ey = x + dx * k2, y + dy * k2
@@ -1935,7 +1976,7 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
         end
     end
     if not goal then
-        error("\"Failed to find a path (underground router) from (" .. sx .. ", " .. sy .. ") to (" ..
+        error("\"Failed to find a path (router) from (" .. sx .. ", " .. sy .. ") to (" ..
               tx .. ", " .. ty .. ") after " .. expansions .. " expansions\"")
     end
 
@@ -2011,12 +2052,7 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
             p.entity = p.existing
         elseif not p.skip then
             player.teleport({p.x + 2, p.y + 2})
-            for _, obstacle in pairs(surface.find_entities_filtered{
-                    area = {{p.x - 0.45, p.y - 0.45}, {p.x + 0.45, p.y + 0.45}}, type = {"tree", "simple-entity"}}) do
-                if obstacle.valid and (obstacle.type == "tree" or string.find(obstacle.name, "rock")) then
-                    if not player.mine_entity(obstacle, true) and obstacle.valid then obstacle.destroy() end
-                end
-            end
+            route_clear_obstacles(player, surface, p.x, p.y)
             local spec = {name = p.name, position = {p.x, p.y}, direction = p.dir, force = player.force,
                           move_stuck_players = true}
             if p.name == ug and not is_pipe then
@@ -2105,6 +2141,185 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
     return {entities = serialized, connected = connected, number_of_entities = counter}
 end
 
+
+-- ===================================================================================
+-- Pole profile: the same A* over tiles, but every move is a hop of up to the pole's wire
+-- reach (no surface pieces). A route starts at the source pole (or, for a non-pole source,
+-- within the supply area of it) and ends when a pole reaches the target pole by wire, or
+-- covers the target entity with its supply area. Fewest poles first.
+-- ===================================================================================
+local function pole_route(player_index, source_x, source_y, target_x, target_y, pole, dry_run)
+    local player = storage.agent_characters[player_index]
+    local surface = player.surface
+    local proto = prototypes.entity[pole]
+    local reach = 7.5
+    pcall(function() reach = proto.get_max_wire_distance() end)
+    if not reach or reach <= 0 then pcall(function() reach = proto.max_wire_distance end) end
+    local supply = 2.5
+    pcall(function() supply = proto.get_supply_area_distance() end)
+    if not supply then pcall(function() supply = proto.supply_area_distance end) end
+    local tile_free = route_tile_checker(surface)
+
+    local function pole_at(x, y)
+        local ps = surface.find_entities_filtered{position = {x, y}, radius = 0.6, type = "electric-pole"}
+        return ps[1]
+    end
+    local src_pole, tgt_pole = pole_at(source_x, source_y), pole_at(target_x, target_y)
+    if src_pole and tgt_pole and src_pole.electric_network_id == tgt_pole.electric_network_id then
+        return {entities = {}, connected = true, number_of_entities = 0}
+    end
+    local tgt_ent = nil
+    if not tgt_pole then
+        for _, e in pairs(surface.find_entities_filtered{position = {target_x, target_y}, radius = 0.6}) do
+            if not UG_IGNORE_TYPES[e.type] then tgt_ent = e break end
+        end
+    end
+    -- half size of the target entity (supply area must touch it)
+    local thw, thh = 0.5, 0.5
+    if tgt_ent then
+        local bb = tgt_ent.bounding_box
+        thw = (bb.right_bottom.x - bb.left_top.x) / 2
+        thh = (bb.right_bottom.y - bb.left_top.y) / 2
+    end
+    local function dist(ax, ay, bx, by) return math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2) end
+    local function at_goal(x, y)
+        if tgt_pole then return dist(x, y, tgt_pole.position.x, tgt_pole.position.y) <= reach end
+        return math.abs(x - target_x) < supply + thw and math.abs(y - target_y) < supply + thh
+    end
+    local goal_r = tgt_pole and reach or supply
+    local function h(x, y)
+        local d = dist(x, y, target_x, target_y) - goal_r
+        if d <= 0 then return 0 end
+        return math.ceil(d / reach)
+    end
+    -- first hop: within wire reach of the source pole, else within the supply area of the source
+    local first_limit_ok
+    if src_pole then
+        first_limit_ok = function(x, y) return dist(x, y, src_pole.position.x, src_pole.position.y) <= reach end
+    else
+        local shw, shh = 0.5, 0.5
+        for _, e in pairs(surface.find_entities_filtered{position = {source_x, source_y}, radius = 0.6}) do
+            if not UG_IGNORE_TYPES[e.type] then
+                local bb = e.bounding_box
+                shw = (bb.right_bottom.x - bb.left_top.x) / 2
+                shh = (bb.right_bottom.y - bb.left_top.y) / 2
+                break
+            end
+        end
+        first_limit_ok = function(x, y)
+            return math.abs(x - source_x) < supply + shw and math.abs(y - source_y) < supply + shh
+        end
+    end
+    local margin = 30
+    local minx, maxx = math.min(source_x, target_x) - margin, math.max(source_x, target_x) + margin
+    local miny, maxy = math.min(source_y, target_y) - margin, math.max(source_y, target_y) + margin
+
+    local function candidates(x, y, first)
+        local out = {}
+        local R = math.floor(first and (supply + 2) or reach)
+        for dx = -R, R do
+            for dy = -R, R do
+                local d = math.sqrt(dx * dx + dy * dy)
+                -- far ring (progress) plus the line towards the target
+                if d >= R - 2.5 and d <= R + 0.01 then table.insert(out, {x + dx, y + dy}) end
+            end
+        end
+        local d = dist(x, y, target_x, target_y)
+        if d > 0 then
+            for step = 1, R do
+                table.insert(out, {math.floor(x + (target_x - x) * step / d) + 0.5,
+                                   math.floor(y + (target_y - y) * step / d) + 0.5})
+            end
+        end
+        local ok = {}
+        for _, c in pairs(out) do
+            local cx, cy = c[1], c[2]
+            if cx >= minx and cx <= maxx and cy >= miny and cy <= maxy and tile_free(cx, cy) ~= false then
+                if first then
+                    if first_limit_ok(cx, cy) then table.insert(ok, c) end
+                elseif dist(x, y, cx, cy) <= reach then
+                    table.insert(ok, c)
+                end
+            end
+        end
+        return ok
+    end
+
+    local g, parent, closed, open = {}, {}, {}, {}
+    local START = "start"
+    local pos = {[START] = {math.floor(source_x) + 0.5, math.floor(source_y) + 0.5}}
+    g[START] = 0
+    heap_push(open, 0, START)
+    local goal, expansions = nil, 0
+    while #open > 0 do
+        local cur = heap_pop(open)[2]
+        if not closed[cur] then
+            closed[cur] = true
+            expansions = expansions + 1
+            if expansions > 20000 then break end
+            local x, y = pos[cur][1], pos[cur][2]
+            if cur ~= START and at_goal(x, y) then goal = cur break end
+            for _, c in pairs(candidates(x, y, cur == START)) do
+                local k = c[1] .. "," .. c[2]
+                if not closed[k] then
+                    local ng = g[cur] + 1 + ((tile_free(c[1], c[2]) == "clear") and 0.3 or 0)
+                                 + 0.001 * dist(c[1], c[2], target_x, target_y)
+                    if g[k] == nil or ng < g[k] then
+                        g[k] = ng
+                        pos[k] = c
+                        parent[k] = cur
+                        heap_push(open, ng + h(c[1], c[2]), k)
+                    end
+                end
+            end
+        end
+    end
+    if not goal then
+        error("\"Failed to find a pole route from (" .. source_x .. ", " .. source_y .. ") to (" ..
+              target_x .. ", " .. target_y .. ") after " .. expansions .. " expansions\"")
+    end
+    local chain = {}
+    local k = goal
+    while k and k ~= START do table.insert(chain, 1, pos[k]); k = parent[k] end
+    if dry_run then return {entities = {}, connected = true, number_of_entities = #chain} end
+    local have = player.get_item_count(pole)
+    if have < #chain then
+        error("\"You do not have enough " .. pole .. " in you inventory to complete this connection. Required number - " ..
+              #chain .. ", Available in inventory - " .. have .. "\"")
+    end
+    local last = player.position
+    for _, c in ipairs(chain) do
+        storage.elapsed_ticks = storage.elapsed_ticks + storage.utils.calculate_movement_ticks(player, last, {x = c[1], y = c[2]})
+        last = {x = c[1], y = c[2]}
+    end
+    local function wire(a, b)
+        if not (a and b and a.valid and b.valid) then return end
+        pcall(function()
+            local ca = a.get_wire_connector(defines.wire_connector_id.pole_copper, true)
+            local cb = b.get_wire_connector(defines.wire_connector_id.pole_copper, true)
+            ca.connect_to(cb, false)
+        end)
+    end
+    local prev = src_pole
+    local placed, out = {}, {}
+    for _, c in ipairs(chain) do
+        player.teleport({c[1] + 2, c[2] + 2})
+        route_clear_obstacles(player, surface, c[1], c[2])
+        if not surface.can_place_entity{name = pole, position = c, force = player.force} then
+            error("\"Cannot connect due to placement blockage at (" .. c[1] .. ", " .. c[2] .. ") for " .. pole .. "\"")
+        end
+        local e = surface.create_entity{name = pole, position = c, force = player.force, move_stuck_players = true}
+        if not e then error("\"create_entity failed for " .. pole .. "\"") end
+        player.remove_item({name = pole, count = 1})
+        wire(prev, e)
+        prev = e
+        table.insert(placed, e)
+        table.insert(out, storage.utils.serialize_entity(e))
+    end
+    wire(prev, tgt_pole)
+    return {entities = out, connected = true, number_of_entities = #placed}
+end
+
 -- Using the new shortest_path function.
 storage.actions.connect_entities = function(player_index, source_x, source_y, target_x, target_y, path_handle, connection_type_string, dry_run, number_of_connection_entities)
 
@@ -2114,6 +2329,11 @@ storage.actions.connect_entities = function(player_index, source_x, source_y, ta
         table.insert(connection_types, item)
     end
     -- path_handle < 0: the underground-aware router does its own search (see ug_route)
+    -- path_handle < 0: the tile router does its own search (ug_route: pipes and belts with
+    -- optional undergrounds, -1; pole_route: poles, -2)
+    if tonumber(path_handle) and tonumber(path_handle) == -2 then
+        return pole_route(player_index, source_x, source_y, target_x, target_y, connection_types[1], dry_run)
+    end
     if tonumber(path_handle) and tonumber(path_handle) < 0 then
         return ug_route(player_index, source_x, source_y, target_x, target_y, connection_types, dry_run)
     end

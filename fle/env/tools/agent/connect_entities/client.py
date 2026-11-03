@@ -509,33 +509,38 @@ class ConnectEntities(Tool):
         num_available = inventory.get(connection_prototype, 0)
 
         connection_type_names_values = list(connection_type_names.values())
-        underground_types = {
-            Prototype.UndergroundPipe,
-            Prototype.UndergroundBelt,
-            Prototype.FastUndergroundBelt,
-            Prototype.ExpressUndergroundBelt,
+        # The tile router in server.lua handles pipes and belts (with or without their
+        # underground variant: jumps only when one is given) and small/medium poles (hops at
+        # wire reach). It checks the inventory per item itself, so no shared entity count.
+        # Surface pieces first in the list = the default surface type.
+        chain_types = {
+            Prototype.Pipe, Prototype.UndergroundPipe,
+            Prototype.TransportBelt, Prototype.UndergroundBelt,
+            Prototype.FastTransportBelt, Prototype.FastUndergroundBelt,
+            Prototype.ExpressTransportBelt, Prototype.ExpressUndergroundBelt,
         }
-        if connection_types & underground_types:
-            # Underground-aware router (server.lua ug_route): searches tiles with jumps over
-            # obstacles and checks the inventory per item itself, so path_handle=-1 and no
-            # shared entity count. Surface pieces first in the list = the default surface type.
+        pole_types = {Prototype.SmallElectricPole, Prototype.MediumElectricPole}
+        result = None
+        if connection_types and connection_types <= chain_types:
             ordered = sorted(
                 connection_type_names_values, key=lambda n: ("ground" in n or "underground" in n)
             )
             response, _ = self.execute(
-                self.player_index,
-                source_pos.x,
-                source_pos.y,
-                target_pos.x,
-                target_pos.y,
-                -1,
-                ",".join(ordered),
-                dry_run,
-                10**9,
+                self.player_index, source_pos.x, source_pos.y, target_pos.x, target_pos.y,
+                -1, ",".join(ordered), dry_run, 10**9,
             )
             result = PathResult(response)
-        else:
-            result = None
+        elif len(connection_types) == 1 and connection_types <= pole_types:
+            try:
+                response, _ = self.execute(
+                    self.player_index, source_pos.x, source_pos.y, target_pos.x, target_pos.y,
+                    -2, connection_type_names_values[0], dry_run, 10**9,
+                )
+                result = PathResult(response)
+                if not result.is_success:
+                    result = None
+            except Exception:
+                result = None   # fall back to FLE's original pole pathing below
         # Determine connection strategy based on type
         if result is None:
           match connection_types:
