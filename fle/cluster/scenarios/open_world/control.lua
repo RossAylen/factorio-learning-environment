@@ -41,6 +41,11 @@ local real_script = script
 local DISPATCHED_EVENTS = {
   [defines.events.on_tick] = true,
   [defines.events.on_script_path_request_finished] = true,
+  -- event-driven play (tools/agent/events): reacting to the world as it happens
+  [defines.events.on_entity_died] = true,
+  [defines.events.on_entity_damaged] = true,
+  [defines.events.on_research_finished] = true,
+  [defines.events.on_unit_group_finished_gathering] = true,
 }
 local DISPATCHED_NTH = {5, 15, 60}
 local DISPATCHED_NTH_SET = {[5] = true, [15] = true, [60] = true}

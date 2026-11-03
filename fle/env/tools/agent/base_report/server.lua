@@ -12,12 +12,12 @@ storage.actions.base_report = function(player_index, points_hex, items_hex)
     for k, v in pairs(defines.entity_status) do st[v] = k end
     local SKIP = {["transport-belt"] = true, ["underground-belt"] = true, ["splitter"] = true,
                   ["pipe"] = true, ["pipe-to-ground"] = true, ["electric-pole"] = true}
-    local out = {sites = {}, production = {}, power = {}, threat = {}}
+    local out = {sites = {}, production = {}, power = {}, threat = {}, tick = game.tick}
 
     for _, p in ipairs(points) do
         local r = p.r or 20
         local site = {name = p.name, statuses = {}, enemies = 0, pollution = 0, damaged = 0,
-                      turrets = 0, turrets_low_ammo = 0}
+                      turrets = 0, turrets_low_ammo = 0, turrets_ammo = 0, chests = {}}
         for _, e in pairs(surface.find_entities_filtered{position = {p.x, p.y}, radius = r, force = force}) do
             if e.valid and not SKIP[e.type] and e.type ~= "character" then
                 local s = e.status and st[e.status] or "none"
@@ -32,7 +32,17 @@ storage.actions.base_report = function(player_index, points_hex, items_hex)
             if e.valid and e.type == "ammo-turret" then
                 site.turrets = site.turrets + 1
                 local inv = e.get_inventory(defines.inventory.turret_ammo)
-                if inv and inv.get_item_count() < 5 then site.turrets_low_ammo = site.turrets_low_ammo + 1 end
+                local n = inv and inv.get_item_count() or 0
+                site.turrets_ammo = site.turrets_ammo + n
+                if n < 5 then site.turrets_low_ammo = site.turrets_low_ammo + 1 end
+            end
+            if e.valid and e.type == "container" then
+                local inv = e.get_inventory(defines.inventory.chest)
+                if inv then
+                    for _, it in pairs(inv.get_contents()) do
+                        site.chests[it.name] = (site.chests[it.name] or 0) + it.count
+                    end
+                end
             end
         end
         site.enemies = #surface.find_entities_filtered{position = {p.x, p.y}, radius = r + 30, force = "enemy", type = "unit"}
