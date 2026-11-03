@@ -103,14 +103,24 @@ class ComposeGenerator:
         else:
             return ""
 
-    def _command(self):
+    @staticmethod
+    def host_network() -> bool:
+        """FLE_HOST_NETWORK=1: run servers on the host network so LAN broadcasts reach
+        real clients (the Multiplayer > LAN browser). Each instance then listens on its own
+        host ports (START_GAME_PORT + i / START_RCON_PORT + i) instead of mapped ports."""
+        return os.environ.get("FLE_HOST_NETWORK", "").lower() in ("1", "true", "yes")
+
+    def _command(self, index: int = 0):
+        game_port, rcon_port = self.internal_game_port, self.internal_rcon_port
+        if self.host_network():
+            game_port, rcon_port = START_GAME_PORT + index, START_RCON_PORT + index
         launch_command = f"--start-server-load-scenario {self.scenario}"
         if self.save_file:
             # Use only the basename inside the command
             launch_command = f"--start-server {Path(self.save_file).name}"
         args = [
-            f"--port {self.internal_game_port}",
-            f"--rcon-port {self.internal_rcon_port}",
+            f"--port {game_port}",
+            f"--rcon-port {rcon_port}",
             f"--rcon-password {self.rcon_password}",
             "--server-settings /opt/factorio/config/server-settings.json",
             "--map-gen-settings /opt/factorio/config/map-gen-settings.json",
@@ -253,10 +263,10 @@ class ComposeGenerator:
             if self.save_file:
                 volumes.append(self._save_volume())
             # Note: attach_mod overlays user mods on top of bundled mods (not currently used)
-            services[f"factorio_{i}"] = {
+            service = {
                 "image": self.image,
                 "platform": self._docker_platform(),
-                "command": self._command(),
+                "command": self._command(i),
                 "deploy": {"resources": {"limits": {"cpus": "1", "memory": "1024m"}}},
                 "entrypoint": [],
                 "ports": [
@@ -268,6 +278,10 @@ class ComposeGenerator:
                 "user": "factorio",
                 "volumes": volumes,
             }
+            if self.host_network():
+                service.pop("ports")
+                service["network_mode"] = "host"
+            services[f"factorio_{i}"] = service
         return services
 
     def compose_dict(self, num_instances):

@@ -127,15 +127,26 @@ EOF
     for i in $(seq 0 $(($NUM_INSTANCES - 1))); do
         UDP_PORT=$((34197 + i))
         TCP_PORT=$((27000 + i))
+        # FLE_HOST_NETWORK=1: host networking so LAN broadcasts reach real clients (the
+        # Multiplayer > LAN browser); each server listens on its own host ports directly.
+        if [ "${FLE_HOST_NETWORK:-}" = "1" ]; then
+            GAME_PORT=$UDP_PORT; RCON_PORT=$TCP_PORT
+            NETWORK_BLOCK="    network_mode: host"
+        else
+            GAME_PORT=34197; RCON_PORT=27015
+            NETWORK_BLOCK="    ports:
+    - ${UDP_PORT}:34197/udp
+    - ${TCP_PORT}:27015/tcp"
+        fi
         
         cat >> docker-compose.yml << EOF
   factorio_${i}:
     image: factoriotools/factorio:2.0.73
     platform: \${DOCKER_PLATFORM:-linux/amd64}
     command: /bin/sh -c '${DLC_STRIP}exec ${EMULATOR} /opt/factorio/bin/x64/factorio ${COMMAND}
-      --port 34197 --server-settings /opt/factorio/config/server-settings.json --map-gen-settings
+      --port ${GAME_PORT} --server-settings /opt/factorio/config/server-settings.json --map-gen-settings
       /opt/factorio/config/map-gen-settings.json --map-settings /opt/factorio/config/map-settings.json
-      --server-banlist /opt/factorio/config/server-banlist.json --rcon-port 27015
+      --server-banlist /opt/factorio/config/server-banlist.json --rcon-port ${RCON_PORT}
       --rcon-password "factorio" --server-whitelist /opt/factorio/config/server-whitelist.json
       --use-server-whitelist --server-adminlist /opt/factorio/config/server-adminlist.json
       --mod-directory /opt/factorio/mods --map-gen-seed 44340'
@@ -145,9 +156,7 @@ EOF
           cpus: '1'
           memory: 1024m
     entrypoint: []
-    ports:
-    - ${UDP_PORT}:34197/udp
-    - ${TCP_PORT}:27015/tcp
+${NETWORK_BLOCK}
     pull_policy: missing
     restart: unless-stopped
     user: factorio

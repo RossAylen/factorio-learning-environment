@@ -24,8 +24,22 @@ def get_local_container_ips() -> tuple[List[str], List[int], List[int]]:
         result = subprocess.run(cmd, capture_output=True, text=True)
         container_info = json.loads(result.stdout)
 
+        # Host networking (FLE_HOST_NETWORK=1): no port mappings; the ports are the
+        # --port / --rcon-port arguments on the server command line.
+        if container_info[0].get("HostConfig", {}).get("NetworkMode") == "host":
+            import re
+
+            cmdline = " ".join(container_info[0]["Config"].get("Cmd") or [])
+            game = re.search(r"--port (\d+)", cmdline)
+            rcon = re.search(r"--rcon-port (\d+)", cmdline)
+            if game and rcon:
+                udp_ports.append(int(game.group(1)))
+                tcp_ports.append(int(rcon.group(1)))
+                ips.append("127.0.0.1")
+            continue
+
         # Get host ports for UDP game port
-        ports = container_info[0]["NetworkSettings"]["Ports"]
+        ports = container_info[0]["NetworkSettings"]["Ports"] or {}
 
         # Find the UDP port mapping
         for port, bindings in ports.items():
