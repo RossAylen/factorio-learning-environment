@@ -672,6 +672,9 @@ class ConnectEntities(Tool):
             if not isinstance(entity_data, dict):
                 continue
 
+            if entity_data.get("name") not in metaclasses:
+                # an existing neighbour pulled into the group (e.g. a splitter on the line)
+                continue
             try:
                 self._process_warnings(entity_data)
                 entity = metaclasses[entity_data["name"]](

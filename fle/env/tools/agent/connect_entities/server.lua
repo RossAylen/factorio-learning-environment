@@ -1698,7 +1698,7 @@ local UG_IGNORE_TYPES = {
     ['resource'] = true, ['character'] = true, ['corpse'] = true, ['character-corpse'] = true,
     ['particle'] = true, ['projectile'] = true, ['fire'] = true, ['stream'] = true, ['beam'] = true,
     ['smoke-with-trigger'] = true, ['explosion'] = true, ['highlight-box'] = true,
-    ['speech-bubble'] = true, ['sticker'] = true, ['item-request-proxy'] = true,
+    ['speech-bubble'] = true, ['sticker'] = true, ['item-request-proxy'] = true, ['item-entity'] = true,
 }
 local FLUID_TYPES = {
     ['pipe'] = true, ['pipe-to-ground'] = true, ['pump'] = true, ['offshore-pump'] = true,
