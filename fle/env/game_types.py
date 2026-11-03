@@ -274,6 +274,7 @@ class Prototype(enum.Enum, metaclass=PrototypeMetaclass):
     PiercingRoundsMagazine = "piercing-rounds-magazine", ent.Ammo
     FirearmMagazine = "firearm-magazine", ent.Ammo
     Grenade = "grenade", None
+    RepairPack = "repair-pack", None
 
     Radar = "radar", ent.Entity
     StoneWall = "stone-wall", ent.Entity

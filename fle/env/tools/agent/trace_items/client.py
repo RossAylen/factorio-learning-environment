@@ -52,8 +52,10 @@ class TraceItems(Tool):
         :return: ItemTrace (truthy when connected) with the path, or the dead ends where it breaks
         """
         def pos(x):
+            import math
             if isinstance(x, Position):
-                return x
+                # a bare position means the tile it lies on
+                return Position(x=math.floor(x.x) + 0.5, y=math.floor(x.y) + 0.5)
             if isinstance(x, tuple):
                 return Position(x=x[0], y=x[1])
             return x.position
