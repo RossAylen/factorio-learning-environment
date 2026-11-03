@@ -127,6 +127,9 @@ EOF
     for i in $(seq 0 $(($NUM_INSTANCES - 1))); do
         UDP_PORT=$((34197 + i))
         TCP_PORT=$((27000 + i))
+        # per-instance server settings so the LAN list tells the servers apart
+        if [ "$i" = "0" ]; then ROLE="campaign"; else ROLE="design lab $i"; fi
+        sed "s/\"name\": \"\([^\"]*\)\"/\"name\": \"\1 - ${ROLE}\"/" config/server-settings.json > config/server-settings-${i}.json
         # FLE_HOST_NETWORK=1: host networking so LAN broadcasts reach real clients (the
         # Multiplayer > LAN browser); each server listens on its own host ports directly.
         if [ "${FLE_HOST_NETWORK:-}" = "1" ]; then
@@ -149,7 +152,7 @@ EOF
     image: factoriotools/factorio:${FLE_FACTORIO_VERSION:-2.1.24}
     platform: \${DOCKER_PLATFORM:-linux/amd64}
     command: /bin/sh -c '${DLC_STRIP}exec ${EMULATOR} /opt/factorio/bin/x64/factorio ${COMMAND}
-      ${BIND_ARG} --server-settings /opt/factorio/config/server-settings.json --map-gen-settings
+      ${BIND_ARG} --server-settings /opt/factorio/config/server-settings-${i}.json --map-gen-settings
       /opt/factorio/config/map-gen-settings.json --map-settings /opt/factorio/config/map-settings.json
       --server-banlist /opt/factorio/config/server-banlist.json --rcon-port ${RCON_PORT}
       --rcon-password "factorio" --server-whitelist /opt/factorio/config/server-whitelist.json
