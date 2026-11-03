@@ -130,8 +130,13 @@ storage.actions.trace_items = function(player_index, sx, sy, tx, ty, max_nodes)
         end
     end
 
-    local path = {}
+    local path, tiles = {}, {}
     if found then
+        local e0 = tgt
+        while e0 do
+            if BELTISH[e0.type] then table.insert(tiles, 1, {e0.position.x, e0.position.y, e0.name}) end
+            e0 = parent[key(e0)]
+        end
         local e = tgt
         while e do
             table.insert(path, 1, (how[key(e)] and (how[key(e)] .. " to ") or "") .. trace_desc(e))
@@ -170,7 +175,7 @@ storage.actions.trace_items = function(player_index, sx, sy, tx, ty, max_nodes)
         if not seen_dead[d] then seen_dead[d] = true table.insert(dead, d) end
     end
     -- JSON as hex: FLE's Lua->Python response parser mangles nested string tables
-    local result = {connected = found, path = path, dead_ends = dead, reached = reached,
+    local result = {connected = found, path = path, tiles = tiles, dead_ends = dead, reached = reached,
                     visited = #order, items_on_belts = items,
                     source = trace_desc(src), target = trace_desc(tgt)}
     local json = helpers.table_to_json(result)

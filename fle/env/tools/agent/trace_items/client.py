@@ -15,6 +15,8 @@ class ItemTrace:
 
         self.connected: bool = bool(data.get("connected"))
         self.path: List[str] = as_list(data.get("path"))
+        # every belt / underground / splitter on the path, in order: [x, y, name]
+        self.tiles: List[list] = [as_list(t) for t in as_list(data.get("tiles"))]
         self.dead_ends: List[str] = as_list(data.get("dead_ends"))
         self.reached: List[str] = as_list(data.get("reached"))
         self.items_on_belts: Dict[str, int] = dict(data.get("items_on_belts") or {})
