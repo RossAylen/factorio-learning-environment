@@ -85,6 +85,12 @@ storage.actions.save_entity_state = function(player_index, distance, player_enti
                 warnings = {},
                 inventories = {}
             }
+            -- underground belts / loaders: input or output end (create_entity needs it back)
+            if entity.type == "underground-belt" then
+                state.belt_to_ground_type = '"' .. entity.belt_to_ground_type .. '"'
+            elseif entity.type == "loader" or entity.type == "loader-1x1" then
+                state.belt_to_ground_type = '"' .. entity.loader_type .. '"'
+            end
 
             -- Add any warnings
             for _, warning in pairs(storage.utils.get_issues(entity) or {}) do

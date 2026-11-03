@@ -40,7 +40,7 @@ storage.actions.load_entity_state = function(player, stored_json_data)
         elseif state.type == "simple-entity-with-owner" then
             -- Do nothing, we don't want to load in placeholder entities if they were somehow persisted!
         else
-            local entity = surface.create_entity({
+            local spec = {
                 name = name,
                 position = {
                     x = tonumber(state.position.x),
@@ -49,7 +49,11 @@ storage.actions.load_entity_state = function(player, stored_json_data)
                 direction = tonumber(state.direction),
                 force = game.forces.player,
                 raise_built = true
-            })
+            }
+            if state.belt_to_ground_type then
+                spec.type = unquote_string(state.belt_to_ground_type)
+            end
+            local entity = surface.create_entity(spec)
 
             if entity then
                 created_entities[state.entity_number] = {
