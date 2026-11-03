@@ -224,6 +224,26 @@ class ConnectEntities(Tool):
                 f"Your types are incompatible {set(['Prototype.' + type.name for type in connection_types])}"
             )
 
+        # Belts between two explicit positions: route exactly tile to tile. Resolving a
+        # Position into the entity standing there (e.g. a port stub belt) makes the resolver
+        # pick a neighbouring tile instead, and the line ends diagonal to the target.
+        belt_types = {
+            Prototype.TransportBelt, Prototype.UndergroundBelt,
+            Prototype.FastTransportBelt, Prototype.FastUndergroundBelt,
+            Prototype.ExpressTransportBelt, Prototype.ExpressUndergroundBelt,
+        }
+        if (isinstance(source, Position) and isinstance(target, Position)
+                and connection_types and set(connection_types) <= belt_types):
+            import math as _math
+            sp = Position(x=_math.floor(source.x) + 0.5, y=_math.floor(source.y) + 0.5)
+            tp = Position(x=_math.floor(target.x) + 0.5, y=_math.floor(target.y) + 0.5)
+            connection = self._create_connection(sp, tp, connection_types, dry_run)
+            if dry_run:
+                return connection
+            if connection and len(connection) > 0:
+                return connection[0]
+            return self._get_existing_connection_group(tp, list(connection_types)[0], None)
+
         # Resolve positions into entities if they exist
         if isinstance(source, Position):
             source = self._resolve_position_into_entity(source)
