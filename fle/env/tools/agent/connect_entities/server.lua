@@ -1820,6 +1820,13 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
     local skey, tkey = key(sx, sy), key(tx, ty)
 
     local tile_free = route_tile_checker(surface)
+    for _, pt in ipairs({{sx, sy}, {tx, ty}}) do
+        local tile = surface.get_tile(pt[1], pt[2])
+        local ok, wet = pcall(function() return tile.collides_with("water_tile") end)
+        if (ok and wet) or tile.name == "out-of-map" then
+            error("\"Cannot route to/from (" .. pt[1] .. ", " .. pt[2] .. "): the tile is " .. tile.name .. "\"")
+        end
+    end
     local function passable(x, y)
         local k = key(x, y)
         return k == skey or k == tkey or tile_free(x, y) ~= false
