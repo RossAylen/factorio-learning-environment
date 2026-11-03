@@ -88,10 +88,28 @@ class LuaScriptManager:
                 raise Exception(f"Syntax error in: {script_name}: {error}")
             print(f"{self.rcon_client.port}: Loading action {script_name} into game")
 
+            self.record_source(script_name, script)
             response = self.rcon_client.send_command("/sc " + script)
 
             if response and "error" in response.lower():
                 raise Exception(response)
+
+    def record_source(self, name, script):
+        """Store a script's source in storage.__fle_src (plain data, saved with the map) so
+        a client that joins later can replay it and run the same Lua as the server (see
+        cluster/scenarios/open_world/control.lua)."""
+        level = 1
+        while ("]" + "=" * level + "]") in script:
+            level += 1
+        eq = "=" * level
+        key = name.replace("\\", "/").replace('"', "")
+        cmd = (
+            '/sc local s = rawget(storage, "__fle_src") or {}; storage.__fle_src = s; '
+            'local o = rawget(storage, "__fle_order") or {}; storage.__fle_order = o; '
+            f'if s["{key}"] == nil then table.insert(o, "{key}") end; '
+            f's["{key}"] = [{eq}[{script}]{eq}]'
+        )
+        self.rcon_client.send_command(cmd)
 
     def load_init_into_game(self, name):
         if name not in self.lib_scripts:
@@ -106,6 +124,7 @@ class LuaScriptManager:
                 return
             self.update_game_checksum(self.rcon_client, name, checksum)
 
+        self.record_source(name, script)
         response = self.rcon_client.send_command("/c " + script)
 
         if response and "error" in response.lower():
