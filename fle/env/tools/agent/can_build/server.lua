@@ -45,14 +45,36 @@ storage.actions.can_build = function(player_index, ents_hex, limit)
                 if same then
                     out.ok = out.ok + 1
                     out.already = (out.already or 0) + 1
+                elseif #by == 0 then
+                    -- nothing solid in the footprint: only water / void / out-of-map tiles block;
+                    -- characters (place_entity moves them aside) and items on the ground do not
+                    local bad_tile = nil
+                    for tx = math.floor(e.x - w / 2 + 0.05), math.floor(e.x + w / 2 - 0.05) do
+                        for ty = math.floor(e.y - h / 2 + 0.05), math.floor(e.y + h / 2 - 0.05) do
+                            local t = surface.get_tile(tx, ty)
+                            if t and t.valid then
+                                local hard = false
+                                pcall(function() hard = t.collides_with("water_tile") end)
+                                if not hard and (t.name == "out-of-map" or t.name == "empty-space" or
+                                        string.find(t.name, "water") or t.name == "lava") then hard = true end
+                                if hard then bad_tile = t.name break end
+                            end
+                        end
+                        if bad_tile then break end
+                    end
+                    if bad_tile then
+                        out.n_blocked = out.n_blocked + 1
+                        out.blockers["tile:" .. bad_tile] = (out.blockers["tile:" .. bad_tile] or 0) + 1
+                        if #out.blocked < limit then
+                            table.insert(out.blocked, {i = i, name = e.name, x = e.x, y = e.y, by = {}, why = "tile " .. bad_tile})
+                        end
+                    else
+                        out.ok = out.ok + 1
+                        out.soft = (out.soft or 0) + 1   -- a character / ground items: not an obstacle
+                    end
                 else
                     out.n_blocked = out.n_blocked + 1
                     local rec = {i = i, name = e.name, x = e.x, y = e.y, by = by}
-                    if #by == 0 then
-                        local t = surface.get_tile(e.x, e.y)
-                        rec.why = "tile " .. (t and t.valid and t.name or "?")
-                        out.blockers["tile:" .. (t and t.valid and t.name or "?")] = (out.blockers["tile:" .. (t and t.valid and t.name or "?")] or 0) + 1
-                    end
                     if #out.blocked < limit then table.insert(out.blocked, rec) end
                 end
             end
