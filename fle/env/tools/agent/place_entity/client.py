@@ -64,6 +64,12 @@ class PlaceObject(Tool):
                 self.player_index, name, factorio_direction, x, y, exact, underground_type
             )
         except Exception as e:
+            if "in inventory" in str(e) and "No " in str(e):
+                inv = str(e).split("Current inventory:", 1)[-1].replace(chr(34), "").replace(chr(39), "").strip()
+                raise Exception(
+                    f"Could not place {name} at ({x}, {y}): no {name} in the inventory - "
+                    f"craft_item(Prototype.{entity.name}, 1) (or precraft/fetch) first. Inventory: {inv[:200]}"
+                )
             try:
                 msg = self.get_error_message(str(e))
                 raise Exception(f"Could not place {name} at ({x}, {y}), {msg}")
@@ -75,6 +81,12 @@ class PlaceObject(Tool):
             sleep(1)
             return self.get_entity(entity, position)
         else:
+            if not isinstance(response, dict) and "in inventory" in str(response) and "No " in str(response):
+                inv = str(response).split("Current inventory:", 1)[-1].replace(chr(34), "").replace(chr(39), "").strip()
+                raise Exception(
+                    f"Could not place {name} at ({x}, {y}): no {name} in the inventory - "
+                    f"craft_item(Prototype.{entity.name}, 1) (or precraft/fetch) first. Inventory: {inv}"
+                )
             if not isinstance(response, dict):
                 try:
                     msg = (
