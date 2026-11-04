@@ -286,7 +286,10 @@ storage.actions.place_entity = function(player_index, entity, direction, x, y, e
             else
                 -- Clear existing entities if exact placement is required
                 local area = {{position.x - 0.25, position.y - 0.25}, {position.x + 0.25, position.y + 0.25}}
-                local entities = player.surface.find_entities_filtered{area = area, force = "player"}
+                local entities = {}
+                for _, b in pairs(player.surface.find_entities_filtered{area = area, force = "player"}) do
+                    if b.type ~= "resource" and b.type ~= "character" then table.insert(entities, b) end
+                end
                 if #entities ~= 0 then
                     -- Build a list of blocking entity names and positions
                     local blocking_info = {}
@@ -337,7 +340,7 @@ storage.actions.place_entity = function(player_index, entity, direction, x, y, e
                 local blocking_entities = player.surface.find_entities_filtered{area = blocking_area}
                 local blocking_info = {}
                 for _, blocking_entity in ipairs(blocking_entities) do
-                    if blocking_entity.name ~= "character" then
+                    if blocking_entity.type ~= "character" and blocking_entity.type ~= "resource" then
                         table.insert(blocking_info, blocking_entity.name .. " at x=" .. blocking_entity.position.x .. " y=" .. blocking_entity.position.y)
                     end
                 end

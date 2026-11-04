@@ -109,7 +109,43 @@ storage.utils.can_place_entity = function(player, entity_name, position, directi
     params.force = player.force
     -- Use the manual build-check path so the engine applies the same rules as when a human player builds.
     params.build_check_type = defines.build_check_type.manual
-    return player.surface.can_place_entity(params)
+    local surface = player.surface
+    if surface.can_place_entity(params) then return true end
+    -- A character standing in the footprint blocks a manual build (a player steps aside). Move
+    -- any character there just outside the footprint and check again.
+    local proto = prototypes.entity[entity_name]
+    if not proto then return false end
+    local cb = proto.collision_box
+    local w, h = cb.right_bottom.x - cb.left_top.x, cb.right_bottom.y - cb.left_top.y
+    if direction == defines.direction.east or direction == defines.direction.west then w, h = h, w end
+    local area = {{position.x - w / 2 - 0.3, position.y - h / 2 - 0.3}, {position.x + w / 2 + 0.3, position.y + h / 2 + 0.3}}
+    local moved = false
+    for _, c in pairs(surface.find_entities_filtered{area = area, type = "character"}) do
+        local best = nil
+        for _, d in ipairs({{0, 1}, {1, 0}, {0, -1}, {-1, 0}}) do
+            local q = {x = position.x + d[1] * (w / 2 + 1.2), y = position.y + d[2] * (h / 2 + 1.2)}
+            local ok = surface.find_non_colliding_position("character", q, 1.5, 0.25)
+            if ok and (math.abs(ok.x - position.x) > w / 2 + 0.5 or math.abs(ok.y - position.y) > h / 2 + 0.5) then
+                best = ok break
+            end
+        end
+        if best then c.teleport(best) moved = true end
+    end
+    if moved and surface.can_place_entity(params) then return true end
+    -- manual-only refusals with nothing solid in the way (resources under a drill/pumpjack are
+    -- required, not blockers): the script check decides
+    params.build_check_type = defines.build_check_type.script
+    if surface.can_place_entity(params) then
+        for _, e in pairs(surface.find_entities_filtered{area = {{position.x - w / 2 + 0.05, position.y - h / 2 + 0.05},
+                {position.x + w / 2 - 0.05, position.y + h / 2 - 0.05}}}) do
+            if e.valid and e.type ~= "resource" and e.type ~= "character" and e.type ~= "item-entity"
+                    and e.type ~= "corpse" and e.type ~= "entity-ghost" then
+                return false
+            end
+        end
+        return true
+    end
+    return false
 end
 
 storage.utils.avoid_entity = function(player_index, entity, position, direction)
