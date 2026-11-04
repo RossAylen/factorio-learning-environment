@@ -78,17 +78,36 @@ local function replay_sources()
   end
 end
 
+-- A runtime handler that throws must never take the server down (Factorio stops a
+-- multiplayer game on any script error in an event): run it protected, log the error and
+-- queue it for the agents (tools/agent/events reads storage.ev.q).
+local function report_handler_error(where, err)
+  local msg = tostring(err)
+  log("FLE handler error in " .. where .. ": " .. msg)
+  local ev = rawget(storage, "ev")
+  if ev and ev.q then
+    if #ev.q >= 2000 then table.remove(ev.q, 1) end
+    table.insert(ev.q, {k = "script_error", where = where, msg = string.sub(msg, 1, 300), tick = game and game.tick or 0})
+  end
+end
+
 local function dispatch_event(event)
   if needs_replay then replay_sources() end
   local h = fle_runtime.handlers[event.name]
-  if h then return h(event) end
+  if h then
+    local ok, err = pcall(h, event)
+    if not ok then report_handler_error("event " .. tostring(event.name), err) end
+  end
 end
 
 local function make_nth_dispatcher(n)
   return function(event)
     if needs_replay then replay_sources() end
     local h = fle_runtime.nth[n]
-    if h then return h(event) end
+    if h then
+      local ok, err = pcall(h, event)
+      if not ok then report_handler_error("nth_tick " .. n, err) end
+    end
   end
 end
 
