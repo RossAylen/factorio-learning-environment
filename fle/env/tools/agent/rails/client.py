@@ -22,7 +22,7 @@ class Rails(Tool):
     rails("train", name="locomotive", x=, y=, d=0, fuel="coal", fuel_count=50) -> {x, y, train, fueled}
     rails("stop", x=, y=, d=, name="A") -> {x, y, name, rail}   (train stop, d = travel direction)
     rails("stop_name", x=, y=, name="A") -> name
-    rails("schedule", x=, y=, records=[{"station": "A", "wait_conditions": [{"type": "time", "ticks": 300}]}],
+    rails("schedule", x=, y=, train_id=0 (exact; else the locomotive nearest x,y - ambiguous -> error with ids), records=[{"station": "A", "wait_conditions": [{"type": "time", "ticks": 300}]}],
           interrupts=[{"name", "conditions": [...], "targets": [records], "inside_interrupt": False}],
           group="Iron", auto=True)   (WaitCondition tables verbatim; compare_type defaults to "and")
     rails("stop_config", x=, y=, limit=1 (-1 none, 0 closed), priority=50, enable=True) -> stop info
@@ -38,7 +38,7 @@ class Rails(Tool):
                  name: str = "", d: int = 0, fuel: str = "", fuel_count: int = 0, records: Optional[List[Dict]] = None,
                  auto: bool = True, reach: float = 10, limit: Optional[int] = None, priority: Optional[int] = None,
                  enable: Optional[bool] = None, interrupts: Optional[List[Dict]] = None, group: str = "",
-                 chain: bool = False, spec: str = "1-1") -> Any:
+                 chain: bool = False, spec: str = "1-1", train_id: int = 0) -> Any:
         if op == "place":
             h = json.dumps(list(pieces or [])).encode().hex()
             r, _ = self.execute(self.player_index, "rail_place", h, reach)
@@ -50,10 +50,10 @@ class Rails(Tool):
                 return r
         elif op == "stop":
             r, _ = self.execute(self.player_index, "rail_stop", x, y, d, name)
-            return r
         elif op == "stop_name":
             r, _ = self.execute(self.player_index, "train_stop_name", x, y, name)
-            return r
+            out = _dec(r)
+            return out.get("name") if isinstance(out, dict) else out
         elif op == "schedule":
             spec_ = {"auto": bool(auto)}
             if records is not None:
@@ -63,7 +63,7 @@ class Rails(Tool):
             if group:
                 spec_["group"] = group
             h = json.dumps(spec_).encode().hex()
-            r, _ = self.execute(self.player_index, "rail_schedule2", x, y, h)
+            r, _ = self.execute(self.player_index, "rail_schedule2", x, y, h, int(train_id or 0))
         elif op == "stop_config":
             r, _ = self.execute(self.player_index, "rail_stop_config", x, y,
                                 -2 if limit is None else (-1 if limit < 0 else int(limit)),

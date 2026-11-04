@@ -143,15 +143,41 @@ storage.actions.train_stop_name = function(player_index, x, y, name)
     local s = storage.agent_characters[player_index].surface.find_entities_filtered{type = "train-stop", position = {tonumber(x), tonumber(y)}, radius = 1.5}[1]
     if not s then error("\"no train stop near " .. x .. "," .. y .. "\"") end
     if name and name ~= "" then s.backer_name = name end
-    return s.backer_name
+    return hexout("RAILHEX_", {name = s.backer_name})
+end
+
+
+-- the train to act on: by id (exact), else the locomotive nearest (x, y); ambiguous -> error with ids
+local function pick_train(surface, x, y, train_id)
+    train_id = tonumber(train_id) or 0
+    if train_id > 0 then
+        local t = game.train_manager.get_train_by_id(train_id)
+        if not t then error('"no train with id ' .. train_id .. '"') end
+        return t
+    end
+    local px, py = tonumber(x), tonumber(y)
+    local best, bd, ids = nil, 1e9, {}
+    for _, l in pairs(surface.find_entities_filtered{type = {"locomotive"}, position = {px, py}, radius = 8}) do
+        if l.train then
+            local d = (l.position.x - px) ^ 2 + (l.position.y - py) ^ 2
+            ids[l.train.id] = true
+            if d < bd then best, bd = l, d end
+        end
+    end
+    if not best then error('"no locomotive near ' .. x .. ',' .. y .. '"') end
+    local n, list = 0, {}
+    for id in pairs(ids) do n = n + 1 list[#list + 1] = tostring(id) end
+    if n > 1 and bd > 2.25 then
+        error('"' .. n .. ' trains within 8 tiles of ' .. x .. ',' .. y .. ' (ids ' .. table.concat(list, ", ") ..
+              ') and none on that tile: pass train_id= or the locomotive position"')
+    end
+    return best.train
 end
 
 -- records (hex JSON): [{station, wait: [{type, ticks?, compare?}]}]; auto = 1 -> automatic mode
-storage.actions.train_schedule = function(player_index, x, y, records_hex, auto)
+storage.actions.train_schedule = function(player_index, x, y, records_hex, auto, train_id)
     local surface = storage.agent_characters[player_index].surface
-    local l = surface.find_entities_filtered{type = {"locomotive"}, position = {tonumber(x), tonumber(y)}, radius = 8}[1]
-    if not (l and l.train) then error("\"no locomotive near " .. x .. "," .. y .. "\"") end
-    local t = l.train
+    local t = pick_train(surface, x, y, train_id)
     local recs = helpers.json_to_table(unhex(records_hex)) or {}
     local sch = t.get_schedule()
     local list = {}
@@ -180,7 +206,7 @@ storage.actions.rail_stop = function(player_index, x, y, d, name)
     if not e then error("\"cannot place a train stop at " .. x .. "," .. y .. "\"") end
     player.remove_item{name = "train-stop", count = 1}
     if name and name ~= "" then e.backer_name = name end
-    return {x = e.position.x, y = e.position.y, name = e.backer_name, rail = e.connected_rail ~= nil}
+    return hexout("RAILHEX_", {x = e.position.x, y = e.position.y, name = e.backer_name, rail = e.connected_rail ~= nil})
 end
 
 
@@ -243,11 +269,9 @@ local function record_list(rs)
 end
 
 -- spec (hex JSON): {records, interrupts: [{name, conditions, targets, inside_interrupt}], group, auto}
-storage.actions.rail_schedule2 = function(player_index, x, y, spec_hex)
+storage.actions.rail_schedule2 = function(player_index, x, y, spec_hex, train_id)
     local surface = storage.agent_characters[player_index].surface
-    local l = surface.find_entities_filtered{type = {"locomotive"}, position = {tonumber(x), tonumber(y)}, radius = 8}[1]
-    if not (l and l.train) then error("\"no locomotive near " .. x .. "," .. y .. "\"") end
-    local t = l.train
+    local t = pick_train(surface, x, y, train_id)
     local spec = helpers.json_to_table(unhex(spec_hex)) or {}
     if spec.group and spec.group ~= "" then t.group = spec.group end
     local sch = t.get_schedule()
