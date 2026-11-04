@@ -23,6 +23,15 @@ end
 script.on_event(defines.events.on_entity_died, function(ev)
     local e = ev.entity
     if not (e and e.valid) then return end
+    if e.type == "character" then   -- an agent died: keep a record the agent's runner can read
+        local idx = nil
+        for i, c in pairs(storage.agent_characters or {}) do if c == e then idx = i end end
+        storage.deaths = storage.deaths or {}
+        local d = {i = idx, x = e.position.x, y = e.position.y, tick = ev.tick}
+        if ev.cause and ev.cause.valid then d.cause = ev.cause.name d.cx = ev.cause.position.x d.cy = ev.cause.position.y end
+        table.insert(storage.deaths, d)
+        if #storage.deaths > 200 then table.remove(storage.deaths, 1) end
+    end
     if e.force and e.force.name == "player" then
         local r = ev_rec(e)
         r.k = "died"
