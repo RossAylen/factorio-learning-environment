@@ -1896,7 +1896,7 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
 
     local function jump_cost(k2)
         if is_pipe then return 2 + 0.3 * k2 end
-        return 3 + k2
+        return 2 + k2   -- an underground hop costs about what its tiles would: preferred over detours
     end
 
     -- search box
@@ -1940,8 +1940,34 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
         end
     end
 
+    -- fail fast when an end is walled in (a tiny free region around it and no way out); the
+    -- full search would grind through 100k+ expansions in a packed base before giving up
+    local function free_region(x0, y0, limit)
+        local seen, q, n = {[x0 .. "," .. y0] = true}, {{x0, y0}}, 0
+        while #q > 0 and n < limit do
+            local c = table.remove(q)
+            n = n + 1
+            for d = 1, 4 do
+                local nx, ny = c[1] + UG_DIRS[d][1], c[2] + UG_DIRS[d][2]
+                local key = nx .. "," .. ny
+                if not seen[key] and in_box(nx, ny) and (passable(nx, ny) or (nx == sx and ny == sy) or (nx == tx and ny == ty)) then
+                    seen[key] = true
+                    q[#q + 1] = {nx, ny}
+                end
+            end
+        end
+        return n
+    end
+    for _, e in ipairs({{tx, ty, "target"}, {sx, sy, "start"}}) do
+        local n = free_region(e[1], e[2], 8)
+        if n < (ug and 2 or 4) then   -- with undergrounds an end needs at least one free neighbour
+            error("\"Failed to find a path (router) from (" .. sx .. ", " .. sy .. ") to (" .. tx .. ", " .. ty ..
+                  ") after 0 expansions: the " .. e[3] .. " is walled in (" .. n .. " free tiles around it)\"")
+        end
+    end
+
     local goal = nil
-    local expansions, MAX_EXPANSIONS = 0, 400000
+    local expansions, MAX_EXPANSIONS = 0, 150000
     while #open > 0 do
         local top = heap_pop(open)
         local cur = top[2]
