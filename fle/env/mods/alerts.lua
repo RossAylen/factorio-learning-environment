@@ -380,30 +380,46 @@ end
 
 
 -- Define a function to be called every tick
+-- Incremental: checking every player entity once a second stalled one tick per second for
+-- ~0.15 s on a 5k-entity base. Now a list (no belts/pipes/poles) is refreshed at most every
+-- 600 ticks and 40 entities are checked per tick. Cursor and list live in storage, so every
+-- peer (a joined spectator too) walks the same entities.
+local ALERT_SKIP_TYPES = {"transport-belt", "underground-belt", "splitter", "pipe", "pipe-to-ground",
+    "electric-pole", "wall", "gate", "character", "entity-ghost", "tile-ghost"}
 local function on_tick(event)
-    -- Run the check every 60 ticks (1 second)
-    if event.tick % 60 == 0 then
+    local sc = storage.alert_scan
+    if not sc or (sc.i > #sc.list and event.tick >= sc.next) then
+        local list = {}
         for _, surface in pairs(game.surfaces) do
-            local entities = surface.find_entities_filtered({force = "player"})
-            for _, entity in pairs(entities) do
-                local issues = storage.utils.get_issues(entity)
-
-                if #issues > 0 then
-                    local position = entity.position
-                    local entity_key = entity.name .. "_" .. position.x .. "_" .. position.y
-                    local name = '"'..entity.name:gsub(" ", "_")..'"'
-                    if not storage.alerts[entity_key] then
-                        storage.alerts[entity_key] = {
-                            position = position,
-                            issues = issues,
-                            entity_name = name,
-                            tick = event.tick
-                        }
-                    end
+            for _, e in pairs(surface.find_entities_filtered{force = "player", type = ALERT_SKIP_TYPES, invert = true}) do
+                list[#list + 1] = e
+            end
+        end
+        sc = {list = list, i = 1, next = event.tick + 600}
+        storage.alert_scan = sc
+        storage.alerts = storage.alerts or {}
+    end
+    local stop = math.min(sc.i + 39, #sc.list)
+    for k = sc.i, stop do
+        local entity = sc.list[k]
+        if entity and entity.valid then
+            local issues = storage.utils.get_issues(entity)
+            if #issues > 0 then
+                local position = entity.position
+                local entity_key = entity.name .. "_" .. position.x .. "_" .. position.y
+                local name = '"'..entity.name:gsub(" ", "_")..'"'
+                if not storage.alerts[entity_key] then
+                    storage.alerts[entity_key] = {
+                        position = position,
+                        issues = issues,
+                        entity_name = name,
+                        tick = event.tick
+                    }
                 end
             end
         end
     end
+    sc.i = stop + 1
 end
 
 -- Define a function to get alerts older than the number of seconds
