@@ -164,7 +164,13 @@ local function pick_train(surface, x, y, train_id)
             if d < bd then best, bd = l, d end
         end
     end
-    if not best then error('"no locomotive near ' .. x .. ',' .. y .. '"') end
+    if not best then
+        local near = {}
+        for _, l in pairs(surface.find_entities_filtered{type = {"locomotive"}, position = {px, py}, radius = 150}) do
+            if l.train and #near < 4 then near[#near + 1] = "train " .. l.train.id .. " at " .. math.floor(l.position.x) .. "," .. math.floor(l.position.y) end
+        end
+        error('"no locomotive within 8 tiles of ' .. x .. ',' .. y .. (#near > 0 and ("; nearest: " .. table.concat(near, "; ")) or "; none within 150 tiles") .. '"')
+    end
     local n, list = 0, {}
     for id in pairs(ids) do n = n + 1 list[#list + 1] = tostring(id) end
     if n > 1 and bd > 2.25 then

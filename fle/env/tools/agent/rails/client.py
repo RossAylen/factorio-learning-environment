@@ -38,7 +38,9 @@ class Rails(Tool):
                  name: str = "", d: int = 0, fuel: str = "", fuel_count: int = 0, records: Optional[List[Dict]] = None,
                  auto: bool = True, reach: float = 10, limit: Optional[int] = None, priority: Optional[int] = None,
                  enable: Optional[bool] = None, interrupts: Optional[List[Dict]] = None, group: str = "",
-                 chain: bool = False, spec: str = "1-1", train_id: int = 0) -> Any:
+                 chain: bool = False, spec: str = "1-1", train_id: Optional[int] = 0) -> Any:
+        if train_id is None:
+            raise ValueError("rails: train_id=None - no train id (did rails('read') find the train? its 'trains' list was empty)")
         if op == "place":
             h = json.dumps(list(pieces or [])).encode().hex()
             r, _ = self.execute(self.player_index, "rail_place", h, reach)
