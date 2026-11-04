@@ -21,7 +21,8 @@ storage.actions.audit_read = function(player_index, x0, y0, x1, y1, limit)
             table.insert(drops_into[d.unit_number], ins)
         end
         if p and p.unit_number then
-            picks_from[p.unit_number] = (picks_from[p.unit_number] or 0) + 1
+            picks_from[p.unit_number] = picks_from[p.unit_number] or {}
+            table.insert(picks_from[p.unit_number], ins)
         end
     end
     local drill_onto = {}
@@ -42,6 +43,8 @@ storage.actions.audit_read = function(player_index, x0, y0, x1, y1, limit)
         if type(r) == "string" then r = prototypes.recipe[r] end
         return r
     end
+    local belt_items   -- defined below (products of a chest look upstream through it)
+    local chest_depth = 0
     local function products(e)
         local out = {}
         if e.type == "assembling-machine" or e.type == "furnace" then
@@ -52,6 +55,18 @@ storage.actions.audit_read = function(player_index, x0, y0, x1, y1, limit)
         elseif e.type == "container" or e.type == "logistic-container" then
             local inv = e.get_inventory(defines.inventory.chest)
             if inv then for _, it in pairs(inv.get_contents()) do out[it.name] = true end end
+            -- a buffer chest delivers what its own feeders bring (it may just be empty now)
+            if chest_depth < 2 then
+                chest_depth = chest_depth + 1
+                for _, ins in pairs(drops_into[e.unit_number] or {}) do
+                    local src = ins.pickup_target
+                    if src and src.valid then
+                        local more = BELT[src.type] and belt_items(src) or products(src)
+                        for k, _ in pairs(more) do out[k] = true end
+                    end
+                end
+                chest_depth = chest_depth - 1
+            end
         elseif e.type == "mining-drill" then
             local t = e.mining_target
             if t then
@@ -64,7 +79,7 @@ storage.actions.audit_read = function(player_index, x0, y0, x1, y1, limit)
 
     -- items a belt network can deliver: items on it + what feeds it (upstream BFS), cached
     local net_cache = {}
-    local function belt_items(b0)
+    belt_items = function(b0)
         if net_cache[b0.unit_number] then return net_cache[b0.unit_number] end
         local items, seen, queue, n = {}, {}, {b0}, 0
         local members = {}
@@ -133,6 +148,10 @@ storage.actions.audit_read = function(player_index, x0, y0, x1, y1, limit)
             table.insert(need, {"fuel", "fuel", 1})
         end
         local feeders = drops_into[e.unit_number] or {}
+        if e.type == "ammo-turret" then   -- a turret with a load is fine whatever feeds it now
+            local inv = e.get_inventory(defines.inventory.turret_ammo)
+            if inv and inv.get_item_count() >= 5 then need = {} end
+        end
         for _, nd in ipairs(need) do
             local item, kind, amt = nd[1], nd[2], nd[3]
             local res = {item, 0, "no_inserter", amt}
@@ -180,6 +199,13 @@ storage.actions.audit_read = function(player_index, x0, y0, x1, y1, limit)
         end
         if #rec.p > 0 and not picks_from[e.unit_number] and e.type ~= "lab" and e.type ~= "ammo-turret" and e.type ~= "boiler" then
             rec.no_taker = 1
+        end
+        local pk = picks_from[e.unit_number]
+        if pk and pk[1] and pk[1].drop_target then
+            local d = pk[1].drop_target
+            rec.feeds = d.name .. "@" .. d.position.x .. "," .. d.position.y
+        elseif pk and pk[1] then
+            rec.feeds = "a belt"
         end
         table.insert(out.machines, rec)
     end

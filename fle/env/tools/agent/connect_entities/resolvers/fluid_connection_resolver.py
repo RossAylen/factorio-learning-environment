@@ -44,6 +44,9 @@ class FluidConnectionResolver(Resolver):
         # are at its edges and may overlap with its own collision box
         if entity is not None and isinstance(entity, Entity):
             entities = [e for e in entities if e.position != entity.position]
+        # a pipe already on the connection point is not a blocker: the route joins it
+        entities = [e for e in entities if not isinstance(e, (Pipe, PipeGroup))
+                    and getattr(e, "name", "") not in ("pipe", "pipe-to-ground")]
         return bool(entities)
 
     def _refresh_entity(self, entity: Entity):
