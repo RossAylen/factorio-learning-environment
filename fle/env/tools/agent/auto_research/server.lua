@@ -23,12 +23,14 @@ end
 local AR_FALLBACK = {"circuit-network", "bulk-inserter", "modules", "explosives", "landfill", "solar-energy",
     "concrete", "gate", "automobilism", "stronger-explosives-1"}
 
--- a pack is FED when the labs hold some or the factory made some in the last minute
+-- a pack is FED when the factory made some in the last minute or at least half the labs hold it
+-- (a few leftover packs do not keep 27 labs busy)
 local function ar_fed_packs(force)
     local stock = {}
-    for _, lab in pairs(game.surfaces[1].find_entities_filtered{type = "lab", force = force}) do
+    local labs = game.surfaces[1].find_entities_filtered{type = "lab", force = force}
+    for _, lab in pairs(labs) do
         local inv = lab.get_inventory(defines.inventory.lab_input)
-        if inv then for _, it in pairs(inv.get_contents()) do stock[it.name] = (stock[it.name] or 0) + it.count end end
+        if inv then for _, it in pairs(inv.get_contents()) do if it.count > 0 then stock[it.name] = (stock[it.name] or 0) + 1 end end end
     end
     local stats = force.get_item_production_statistics(game.surfaces[1])
     local memo = {}
@@ -37,7 +39,7 @@ local function ar_fed_packs(force)
             local made = 0
             pcall(function() made = stats.get_flow_count{name = pack, category = "input",
                 precision_index = defines.flow_precision_index.one_minute, count = true} end)
-            memo[pack] = (stock[pack] or 0) >= 1 or (made or 0) > 0
+            memo[pack] = (stock[pack] or 0) * 2 >= math.max(1, #labs) or (made or 0) > 0   -- half the labs hold it
         end
         return memo[pack]
     end
@@ -72,6 +74,18 @@ local function ar_refill()
         for _, n in ipairs(storage.research_priority or {}) do try(n) end
         for _, n in ipairs(q) do try(n) end
         for _, n in ipairs(AR_FALLBACK) do try(n) end
+        if not pick then   -- generic: any startable tech whose packs are all fed, cheapest first
+            local best, bc = nil, nil
+            for name, t in pairs(force.technologies) do
+                if ar_startable(t, {}) and ar_all_fed(t, fed) then
+                    local c = 0
+                    for _, ing in pairs(t.research_unit_ingredients) do c = c + ing.amount end
+                    c = c * t.research_unit_count
+                    if not bc or c < bc or (c == bc and name < best) then best, bc = name, c end
+                end
+            end
+            pick = best
+        end
         if pick and pick ~= q[1] then
             local nq = {pick}
             for _, n in ipairs(q) do if n ~= pick then nq[#nq + 1] = n end end
