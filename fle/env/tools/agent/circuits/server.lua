@@ -76,6 +76,66 @@ C.decider = function(player, spec)
     e.get_or_create_control_behavior().parameters = spec.parameters
     return {ok = true}
 end
+-- inserters around an entity and what they move: [{x, y, n, pick = {n, x, y}, drop = {n, x, y}}]
+-- (spec.into = only those dropping into it, spec.from = only those taking from it)
+C.inserters = function(player, spec)
+    local e = c_find(player.surface, spec.x, spec.y, spec.name)
+    if not e then error("\"circuits inserters: no entity there\"") end
+    local bb = e.bounding_box
+    local r = tonumber(spec.radius) or 3
+    local out = {}
+    for _, i in pairs(player.surface.find_entities_filtered{area = {{bb.left_top.x - r, bb.left_top.y - r}, {bb.right_bottom.x + r, bb.right_bottom.y + r}}, type = "inserter", force = player.force}) do
+        local dt, pt = i.drop_target, i.pickup_target
+        local into, from = dt and dt.unit_number == e.unit_number, pt and pt.unit_number == e.unit_number
+        if (not spec.into or into) and (not spec.from or from) and (into or from) then
+            out[#out + 1] = {n = i.name, x = i.position.x, y = i.position.y, into = into, from = from,
+                drop = dt and {n = dt.name, x = dt.position.x, y = dt.position.y} or nil,
+                pick = pt and {n = pt.name, x = pt.position.x, y = pt.position.y} or nil}
+        end
+    end
+    local own = nil
+    if e.type == "inserter" then
+        local dt, pt = e.drop_target, e.pickup_target
+        own = {drop = dt and {n = dt.name, x = dt.position.x, y = dt.position.y} or nil,
+               pick = pt and {n = pt.name, x = pt.position.x, y = pt.position.y} or nil}
+    end
+    return {entity = e.name, inserters = out, own = own}
+end
+
+-- electric pole: network, wire reach, supply area, copper neighbours (each with its network)
+local function pole_info(e)
+    local out = {n = e.name, x = e.position.x, y = e.position.y, net = e.electric_network_id,
+        reach = e.prototype.get_max_wire_distance(), supply = e.prototype.get_supply_area_distance(), nb = {}}
+    local c = e.get_wire_connector(defines.wire_connector_id.pole_copper, false)
+    if c then
+        for _, w in pairs(c.connections) do
+            local o = w.target.owner
+            if o and o.valid and o.type == "electric-pole" then
+                out.nb[#out.nb + 1] = {n = o.name, x = o.position.x, y = o.position.y, net = o.electric_network_id,
+                    reach = o.prototype.get_max_wire_distance()}
+            end
+        end
+    end
+    return out
+end
+C.pole = function(player, spec)
+    local e = player.surface.find_entities_filtered{position = {spec.x, spec.y}, radius = 0.7, type = "electric-pole", limit = 1}[1]
+    if not e then return {none = true} end
+    return pole_info(e)
+end
+-- copper wire between two poles (disconnect = true removes it)
+C.pole_connect = function(player, spec)
+    local s = player.surface
+    local a = s.find_entities_filtered{position = {spec.a.x, spec.a.y}, radius = 0.7, type = "electric-pole", limit = 1}[1]
+    local b = s.find_entities_filtered{position = {spec.b.x, spec.b.y}, radius = 0.7, type = "electric-pole", limit = 1}[1]
+    if not a or not b then error('"circuits pole_connect: no pole at ' .. (a and "b" or "a") .. '"') end
+    local ca = a.get_wire_connector(defines.wire_connector_id.pole_copper, true)
+    local cb = b.get_wire_connector(defines.wire_connector_id.pole_copper, true)
+    local ok
+    if spec.disconnect then ok = ca.disconnect_from(cb) else ok = ca.connect_to(cb, false) end
+    return {ok = ok and true or false, a = pole_info(a), b = pole_info(b)}
+end
+
 -- any control behaviour fields verbatim (train stop, chest, pump, inserter, lamp, ...)
 C.control = function(player, spec)
     local e = c_find(player.surface, spec.x, spec.y, spec.name)

@@ -13,6 +13,9 @@ class Circuits(Tool):
     circuits("decider", x=, y=, parameters={"conditions": [...], "outputs": [...]})   (2.x tables verbatim)
     circuits("control", x=, y=, name=?, fields={"set_trains_limit": True, "trains_limit_signal": {...}, ...})
         any LuaControlBehavior fields: train stop, chest, pump, inserter, ...
+    circuits("inserters", x=, y=, into=False, from=False, radius=3) -> {entity, inserters: [{n, x, y, into, from, drop, pick}]}
+    circuits("pole", x=, y=) -> {n, x, y, net, reach, supply, nb: [{n, x, y, net, reach}]}   (copper neighbours)
+    circuits("pole_connect", a={x, y}, b={x, y}, disconnect=False) -> {ok, a, b}
     circuits("graph", x=, y=, radius=60) -> {rails, blocks, block_sizes, signals [{x,y,d,chain,state}], stops}
     """
 

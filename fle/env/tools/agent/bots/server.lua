@@ -141,7 +141,9 @@ B.network = function(player, spec)
         end
         local missing = {}
         for k, v in pairs(need) do if (stock[k] or 0) < v then missing[k] = v - (stock[k] or 0) end end
-        out.ghosts, out.need, out.missing, out.to_deconstruct = ghosts, need, missing, decon
+        local upg = 0
+        pcall(function() upg = #player.surface.find_entities_filtered{area = area, force = player.force, to_be_upgraded = true} end)
+        out.ghosts, out.need, out.missing, out.to_deconstruct, out.to_upgrade = ghosts, need, missing, decon, upg
     end
     return out
 end
