@@ -52,24 +52,41 @@ class MoveTo(Tool):
             self.game_state.player_location = start
         except Exception:
             pass
-        path_handle = self.request_path(
-            start=start, finish=nposition, allow_paths_through_own_entities=not slow, resolution=-1, for_walking=slow,
-        )
+        def _try_paths(st, owns):
+            """path handle from st, or the last error"""
+            err = None
+            for own in owns:
+                h = self.request_path(start=st, finish=nposition, allow_paths_through_own_entities=own,
+                                      resolution=-1, for_walking=slow)
+                try:
+                    self.get_path(h)
+                    return h, None
+                except Exception as e:
+                    err = e
+            return None, err
 
-        # Wait for path to be computed using get_path with backoff polling
-        # This fixes the race condition where move_to was called before path was ready
-        try:
-            self.get_path(path_handle)
-        except Exception as e:
-            if not slow:
-                raise Exception(f"Could not get path to ({x}, {y}): {e}")
-            path_handle = self.request_path(
-                start=start, finish=nposition, allow_paths_through_own_entities=True, resolution=-1, for_walking=True,
-            )
+        # slow: around our entities first; fast: through them (it does not collide)
+        path_handle, err = _try_paths(start, (False,) if slow else (True,))
+        if path_handle is None:
+            # boxed in (a restore dropped the character on a cliff, trees/rocks, a row built
+            # around it): mine trees/rocks in reach, move to the nearest free spot, try again
+            around = ""
             try:
-                self.get_path(path_handle)
-            except Exception as e2:
-                raise Exception(f"Could not get path to ({x}, {y}): {e2}")
+                r = self.connection.rcon_client.send_command(
+                    f"/silent-command local p = storage.actions.where({self.player_index}, 2) "
+                    f"rcon.print(p.x .. '|' .. p.y .. '|' .. tostring(p.moved) .. '|' .. p.mined .. '|' .. p.around)"
+                )
+                px, py, mv, mined, around = (r.strip().split("|") + ["", "", "", "", ""])[:5]
+                start = Position(x=float(px), y=float(py))
+                self.game_state.player_location = start
+            except Exception:
+                pass
+            # around again from the free spot, then (last resort) through our entities
+            path_handle, err2 = _try_paths(start, (False, True) if slow else (True,))
+            if path_handle is None:
+                hint = (f" Entities around the character: {around}. Pick up the one toward the target "
+                        f"(pickup_entity(...)), walk out, and re-place it." if around else "")
+                raise Exception(f"Could not get path to ({x}, {y}) from ({start.x:.1f}, {start.y:.1f}): {err2 or err}.{hint}")
 
         # Track elapsed ticks for fast forward
         ticks_before = self.game_state.instance.get_elapsed_ticks()
