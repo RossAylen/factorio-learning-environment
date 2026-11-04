@@ -244,7 +244,29 @@ storage.actions.update_walking_queues = function()
         else
             queue.stall = (queue.stall or 0) + 1
         end
+        if queue.stall > 36 and (queue.nudge or 0) < 2 then
+            -- first unstick: walk along one axis, then the other (a diagonal clips corners)
+            queue.nudge = (queue.nudge or 0) + 1
+            queue.stall, queue.best = 0, nil
+            local dx = queue.current_target.x - player.position.x
+            local dy = queue.current_target.y - player.position.y
+            local use_x = (math.abs(dx) >= math.abs(dy))
+            if queue.nudge == 2 then use_x = not use_x end
+            local dir
+            if use_x then dir = dx > 0 and defines.direction.east or defines.direction.west
+            else dir = dy > 0 and defines.direction.south or defines.direction.north end
+            queue.nudge_dir = dir
+            queue.nudge_left = 15   -- ~1.25 s of axis walking, then normal steering again
+            player.walking_state = {walking = true, direction = dir}
+            goto continue
+        end
+        if queue.nudge_left and queue.nudge_left > 0 then
+            queue.nudge_left = queue.nudge_left - 1
+            player.walking_state = {walking = true, direction = queue.nudge_dir}
+            goto continue
+        end
         if queue.stall > 36 then
+            queue.nudge, queue.nudge_dir, queue.nudge_left = 0, nil, 0
             queue.skips = (queue.skips or 0) + 1
             queue.stall, queue.best = 0, nil
             if queue.skips > 4 or #queue.positions <= 1 then
@@ -273,6 +295,7 @@ storage.actions.update_walking_queues = function()
         -- If player is close enough to current target
         if distance < 1 then
             queue.skips = 0
+            queue.nudge, queue.nudge_dir, queue.nudge_left = 0, nil, 0
             -- Remove the current position from queue
             table.remove(queue.positions, 1)
 
