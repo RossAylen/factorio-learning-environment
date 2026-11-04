@@ -152,6 +152,16 @@ class GetEntities(Tool):
                             # one inventory per part (a splitter has two): merge the counts.
                             # (Extending the list while iterating it never ended once a part
                             # held items - it kept appending item names, then their letters.)
+                            if metaclass.__name__ == "Splitter":
+                                # a splitter keeps one inventory per lane (List[Inventory])
+                                entity_data["inventory"] = [
+                                    {k: v for k, v in inv.items() if isinstance(v, (int, float))}
+                                    if isinstance(inv, dict) else {}
+                                    for inv in entity_data["inventory"]
+                                ]
+                                entity = metaclass(**entity_data)
+                                entities_list.append(entity)
+                                continue
                             merged = {}
                             for inv in entity_data["inventory"]:
                                 if isinstance(inv, dict):
