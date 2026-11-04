@@ -40,6 +40,18 @@ class MoveTo(Tool):
         # around exists (goal enclosed by our entities), fall back to the old through-path.
         slow = not self.game_state.instance.fast
         start = Position(x=self.game_state.player_location.x, y=self.game_state.player_location.y)
+        # start from where the character really is (player_location can be stale), and if it
+        # stands inside a building (one was built around it), step it out first
+        try:
+            r = self.connection.rcon_client.send_command(
+                f"/silent-command local p = storage.actions.where({self.player_index}, 1) "
+                f"rcon.print(p.x .. ',' .. p.y .. ',' .. tostring(p.moved))"
+            )
+            px, py, mv = r.strip().split(",")
+            start = Position(x=float(px), y=float(py))
+            self.game_state.player_location = start
+        except Exception:
+            pass
         path_handle = self.request_path(
             start=start, finish=nposition, allow_paths_through_own_entities=not slow, resolution=-1, for_walking=slow,
         )
