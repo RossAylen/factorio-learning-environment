@@ -61,7 +61,13 @@ storage.actions.base_report = function(player_index, points_hex, items_hex)
     end
 
     -- power (the electric network screen of any pole)
-    local pole = surface.find_entities_filtered{type = "electric-pole", force = force, limit = 1}[1]
+    -- the pole next to a steam engine reads the main grid (an island pole reads 0)
+    local pole = nil
+    for _, g in pairs(surface.find_entities_filtered{type = "generator", force = force, limit = 20}) do
+        pole = surface.find_entities_filtered{type = "electric-pole", force = force, position = g.position, radius = 12, limit = 1}[1]
+        if pole then break end
+    end
+    pole = pole or surface.find_entities_filtered{type = "electric-pole", force = force, limit = 1}[1]
     if pole then
         local ok, ns = pcall(function() return pole.electric_network_statistics end)
         local gen, use = 0, 0
