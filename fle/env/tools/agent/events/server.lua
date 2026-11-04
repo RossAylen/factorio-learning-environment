@@ -46,6 +46,7 @@ script.on_event(defines.events.on_entity_damaged, function(ev)
 end)
 
 script.on_event(defines.events.on_research_finished, function(ev)
+    if ev.by_script then return end   -- checkpoint loads / research grants, not lab work
     ev_push({k = "research", n = ev.research.name, tick = ev.tick})
 end)
 
