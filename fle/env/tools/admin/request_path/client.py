@@ -15,6 +15,7 @@ class RequestPath(Tool):
         radius=0.5,
         entity_size=1,
         resolution=0,
+        for_walking=False,
     ) -> int:
         """
         Asynchronously request a path from start to finish from the game.
@@ -36,6 +37,7 @@ class RequestPath(Tool):
                 allow_paths_through_own_entities,
                 entity_size,
                 resolution,
+                1 if for_walking else 0,
             )
 
             if response is None or response == {}:

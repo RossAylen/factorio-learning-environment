@@ -41,7 +41,7 @@ class MoveTo(Tool):
         slow = not self.game_state.instance.fast
         start = Position(x=self.game_state.player_location.x, y=self.game_state.player_location.y)
         path_handle = self.request_path(
-            start=start, finish=nposition, allow_paths_through_own_entities=not slow, resolution=-1,
+            start=start, finish=nposition, allow_paths_through_own_entities=not slow, resolution=-1, for_walking=slow,
         )
 
         # Wait for path to be computed using get_path with backoff polling
@@ -52,7 +52,7 @@ class MoveTo(Tool):
             if not slow:
                 raise Exception(f"Could not get path to ({x}, {y}): {e}")
             path_handle = self.request_path(
-                start=start, finish=nposition, allow_paths_through_own_entities=True, resolution=-1,
+                start=start, finish=nposition, allow_paths_through_own_entities=True, resolution=-1, for_walking=True,
             )
             try:
                 self.get_path(path_handle)

@@ -3,7 +3,7 @@ if not storage.clearance_entities then
     storage.clearance_entities = {}
 end
 
-storage.actions.request_path = function(player_index, start_x, start_y, goal_x, goal_y, radius, allow_paths_through_own_entities, entity_size)
+storage.actions.request_path = function(player_index, start_x, start_y, goal_x, goal_y, radius, allow_paths_through_own_entities, entity_size, _resolution, for_walking)
     -- Ensure we have a valid character, recreating if necessary
     local player = storage.utils.ensure_valid_character(player_index)
     if not player then return nil end
@@ -95,6 +95,11 @@ storage.actions.request_path = function(player_index, start_x, start_y, goal_x, 
             allow_paths_through_own_entities = allow_paths_through_own_entities
         }
     }
+    if for_walking == 1 or for_walking == "1" or for_walking == true then
+        -- a walking character: exactly what blocks the character (belts carry the object
+        -- layer, so the routing mask above walls a character in behind any belt)
+        path_request.collision_mask = prototypes.entity["character"].collision_mask
+    end
     local request_id = surface.request_path(path_request)
 
     storage.clearance_entities[request_id] = clearance_entities
