@@ -123,6 +123,19 @@ version: '3'
 services:
 EOF
     
+    # Rootless Docker (daemon runs as the user, no docker group): container root maps
+    # to the host user, so run as root to keep user-owned bind mounts writable, and
+    # skip host networking, whose "host" is rootlesskit's private namespace there.
+    CONTAINER_USER="factorio"
+    USE_HOST_NET="${FLE_HOST_NETWORK:-}"
+    if docker info --format '{{json .SecurityOptions}}' 2>/dev/null | grep -q rootless; then
+        CONTAINER_USER="0:0"
+        if [ "$USE_HOST_NET" = "1" ]; then
+            echo "FLE_HOST_NETWORK ignored: rootless Docker has no host network; using mapped ports."
+            USE_HOST_NET=""
+        fi
+    fi
+
     # Add the specified number of factorio services
     for i in $(seq 0 $(($NUM_INSTANCES - 1))); do
         UDP_PORT=$((34197 + i))
@@ -132,7 +145,7 @@ EOF
         sed "s/\"name\": \"\([^\"]*\)\"/\"name\": \"\1 - ${ROLE}\"/" config/server-settings.json > config/server-settings-${i}.json
         # FLE_HOST_NETWORK=1: host networking so LAN broadcasts reach real clients (the
         # Multiplayer > LAN browser); each server listens on its own host ports directly.
-        if [ "${FLE_HOST_NETWORK:-}" = "1" ]; then
+        if [ "$USE_HOST_NET" = "1" ]; then
             GAME_PORT=$UDP_PORT; RCON_PORT=$TCP_PORT
             NETWORK_BLOCK="    network_mode: host"
             # Bind to the LAN address so the LAN listing advertises a joinable address
@@ -167,7 +180,7 @@ EOF
 ${NETWORK_BLOCK}
     pull_policy: missing
     restart: unless-stopped
-    user: factorio
+    user: "${CONTAINER_USER}"
     volumes:
     - source: ./scenarios
       target: /opt/factorio/scenarios
