@@ -50,6 +50,7 @@ storage.actions.move_to = function(player_index, path_handle, trailing_entity, i
             storage.walking_queues = {}
         end
 
+        if storage.walk_stuck then storage.walk_stuck[player_index] = nil end
         -- Create or clear existing queue for this player
         if not storage.walking_queues[player_index] then
             storage.walking_queues[player_index] = {
@@ -234,8 +235,44 @@ storage.actions.update_walking_queues = function()
         local distance = ((player.position.x - queue.current_target.x)^2 +
                          (player.position.y - queue.current_target.y)^2)^0.5
 
+        -- stuck detection (slow mode): no progress toward the waypoint for ~3 s -> skip that
+        -- waypoint; 4 skips in a row -> give up and record why, so move_to raises instead of
+        -- polling forever with the character pressed against an entity
+        if not queue.best or distance < queue.best - 0.05 then
+            queue.best = distance
+            queue.stall = 0
+        else
+            queue.stall = (queue.stall or 0) + 1
+        end
+        if queue.stall > 36 then
+            queue.skips = (queue.skips or 0) + 1
+            queue.stall, queue.best = 0, nil
+            if queue.skips > 4 or #queue.positions <= 1 then
+                local blocker = nil
+                for _, e in pairs(player.surface.find_entities_filtered{position = queue.current_target, radius = 1.5}) do
+                    if e.valid and e ~= player and e.type ~= "resource" and e.type ~= "item-entity" and e.type ~= "character" then
+                        blocker = e.name .. " at " .. e.position.x .. "," .. e.position.y
+                        break
+                    end
+                end
+                storage.walk_stuck = storage.walk_stuck or {}
+                storage.walk_stuck[player_index] = "stuck at " .. string.format("%.1f,%.1f", player.position.x, player.position.y) ..
+                    " walking to waypoint " .. queue.current_target.x .. "," .. queue.current_target.y ..
+                    (blocker and (" (blocked by " .. blocker .. ")") or "")
+                queue.positions = {}
+                queue.current_target = nil
+                queue.skips = 0
+                player.walking_state = {walking = false}
+                goto continue
+            end
+            table.remove(queue.positions, 1)
+            queue.current_target = queue.positions[1]
+            goto continue
+        end
+
         -- If player is close enough to current target
         if distance < 1 then
+            queue.skips = 0
             -- Remove the current position from queue
             table.remove(queue.positions, 1)
 
@@ -274,4 +311,10 @@ storage.actions.get_walking_queue_length = function(player_index)
         return #storage.walking_queues[player_index].positions
     end
     return 0
+end
+
+storage.actions.get_walk_stuck = function(player_index)
+    local m = storage.walk_stuck and storage.walk_stuck[player_index]
+    if m then storage.walk_stuck[player_index] = nil return m end
+    return ""
 end

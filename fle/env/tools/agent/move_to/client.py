@@ -34,13 +34,14 @@ class MoveTo(Tool):
         )
         nposition = Position(x=x, y=y)
 
+        # Slow (real-time) mode: the character really walks the path, so it must go AROUND our
+        # buildings (a path through them pins it against a chest forever). Fast mode moves along
+        # the path without collisions, so through-own-entities paths are fine there. If no path
+        # around exists (goal enclosed by our entities), fall back to the old through-path.
+        slow = not self.game_state.instance.fast
+        start = Position(x=self.game_state.player_location.x, y=self.game_state.player_location.y)
         path_handle = self.request_path(
-            start=Position(
-                x=self.game_state.player_location.x, y=self.game_state.player_location.y
-            ),
-            finish=nposition,
-            allow_paths_through_own_entities=True,
-            resolution=-1,
+            start=start, finish=nposition, allow_paths_through_own_entities=not slow, resolution=-1,
         )
 
         # Wait for path to be computed using get_path with backoff polling
@@ -48,7 +49,15 @@ class MoveTo(Tool):
         try:
             self.get_path(path_handle)
         except Exception as e:
-            raise Exception(f"Could not get path to ({x}, {y}): {e}")
+            if not slow:
+                raise Exception(f"Could not get path to ({x}, {y}): {e}")
+            path_handle = self.request_path(
+                start=start, finish=nposition, allow_paths_through_own_entities=True, resolution=-1,
+            )
+            try:
+                self.get_path(path_handle)
+            except Exception as e2:
+                raise Exception(f"Could not get path to ({x}, {y}): {e2}")
 
         # Track elapsed ticks for fast forward
         ticks_before = self.game_state.instance.get_elapsed_ticks()
@@ -98,11 +107,19 @@ class MoveTo(Tool):
                 remaining_steps = self.connection.rcon_client.send_command(
                     f"/silent-command rcon.print(storage.actions.get_walking_queue_length({self.player_index}))"
                 )
-                while remaining_steps != "0":
+                import time as _time
+                t_walk = _time.time()
+                while remaining_steps != "0" and _time.time() - t_walk < 600:
                     sleep(0.5)
                     remaining_steps = self.connection.rcon_client.send_command(
                         f"/silent-command rcon.print(storage.actions.get_walking_queue_length({self.player_index}))"
                     )
+                stuck = self.connection.rcon_client.send_command(
+                    f"/silent-command rcon.print(storage.actions.get_walk_stuck({self.player_index}))"
+                )
+                if stuck and stuck.strip():
+                    raise Exception(f"walk to ({position.x}, {position.y}) failed: {stuck.strip()}. "
+                                    f"Move to a tile beside the target, or pick up / walk around the blocker.")
                 self.game_state.player_location = Position(x=position.x, y=position.y)
 
             return Position(x=response["x"], y=response["y"])  # , execution_time
