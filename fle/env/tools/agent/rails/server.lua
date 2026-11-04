@@ -82,8 +82,11 @@ storage.actions.rail_read = function(player_index, x, y, radius)
     out.signals = #surface.find_entities_filtered{position = area.position, radius = area.radius,
                                                    type = {"rail-signal", "rail-chain-signal"}}
     for _, s in pairs(surface.find_entities_filtered{position = area.position, radius = area.radius, type = "train-stop"}) do
+        local lim = s.trains_limit
+        if lim and lim >= 4294967295 then lim = nil end
         table.insert(out.stops, {name = s.backer_name, x = s.position.x, y = s.position.y, d = s.direction,
-                                 rail = s.connected_rail ~= nil})
+                                 rail = s.connected_rail ~= nil, limit = lim or -1, priority = s.train_stop_priority,
+                                 trains_count = s.trains_count or 0})
     end
     local seen = {}
     local st = {}
@@ -98,7 +101,13 @@ storage.actions.rail_read = function(player_index, x, y, radius)
                 for _, rec in pairs(t.get_schedule().get_records()) do recs[#recs + 1] = rec.station or "?" end
             end)
             local fr = t.front_stock
+            local pes, fuel, ints = nil, {}, {}
+            pcall(function() if t.path_end_stop then pes = {name = t.path_end_stop.backer_name, x = t.path_end_stop.position.x, y = t.path_end_stop.position.y} end end)
+            pcall(function() for _, lo in pairs(t.locomotives.front_movers) do for _, it in pairs(lo.get_fuel_inventory().get_contents()) do fuel[it.name] = (fuel[it.name] or 0) + it.count end end end)
+            pcall(function() for _, i in pairs(t.get_schedule().get_interrupts()) do ints[#ints + 1] = i.name end end)
             table.insert(out.trains, {id = t.id, state = st[t.state] or tostring(t.state), manual = t.manual_mode,
+                                      group = t.group or "", path_end_stop = pes, has_path = t.has_path, fuel = fuel,
+                                      interrupts = ints,
                                       speed = t.speed, x = fr and fr.position.x, y = fr and fr.position.y,
                                       station = t.station and t.station.backer_name or "", schedule = recs,
                                       cargo = t.get_contents and (function() local c = {} for _, it in pairs(t.get_contents()) do c[it.name] = it.count end return c end)() or {},
@@ -172,6 +181,177 @@ storage.actions.rail_stop = function(player_index, x, y, d, name)
     player.remove_item{name = "train-stop", count = 1}
     if name and name ~= "" then e.backer_name = name end
     return {x = e.position.x, y = e.position.y, name = e.backer_name, rail = e.connected_rail ~= nil}
+end
+
+
+-- ---- trains v2 (TRAINS.md gap list) ----
+local function find_stop(surface, x, y)
+    return surface.find_entities_filtered{type = "train-stop", position = {tonumber(x), tonumber(y)}, radius = 2}[1]
+end
+
+local function stop_info(s)
+    local ids = {}
+    pcall(function() for _, t in pairs(s.get_train_stop_trains()) do ids[#ids + 1] = t.id end end)
+    local lim = s.trains_limit
+    if lim and lim >= 4294967295 then lim = nil end
+    return {name = s.backer_name, x = s.position.x, y = s.position.y, limit = lim or -1,
+            priority = s.train_stop_priority, trains_count = s.trains_count or 0, trains = ids}
+end
+
+-- limit: -1 = no limit, -2 = unchanged, 0 = closed; priority: -2 = unchanged; enable: 1/0/-2
+storage.actions.rail_stop_config = function(player_index, x, y, limit, priority, enable)
+    local s = find_stop(storage.agent_characters[player_index].surface, x, y)
+    if not s then error("\"no train stop near " .. x .. "," .. y .. "\"") end
+    limit, priority, enable = tonumber(limit) or -2, tonumber(priority) or -2, tonumber(enable) or -2
+    if limit == -1 then s.trains_limit = nil elseif limit >= 0 then s.trains_limit = limit end
+    if priority >= 0 then s.train_stop_priority = math.min(255, priority) end
+    if enable == 0 then
+        storage.stop_saved_limit = storage.stop_saved_limit or {}
+        storage.stop_saved_limit[s.unit_number] = s.trains_limit
+        s.trains_limit = 0
+    elseif enable == 1 and s.trains_limit == 0 then
+        local saved = storage.stop_saved_limit and storage.stop_saved_limit[s.unit_number]
+        s.trains_limit = saved
+    end
+    return hexout("RAILHEX_", stop_info(s))
+end
+
+-- wait conditions: verbatim WaitCondition tables; the old short form {type, ticks} still works;
+-- compare_type defaults to the game's "and"
+local function wait_list(ws)
+    local out = {}
+    for k, w in ipairs(ws or {}) do
+        local c = {}
+        for key, v in pairs(w) do c[key] = v end
+        if c.compare == nil and c.compare_type == nil then c.compare_type = "and" end
+        if c.compare then c.compare_type = c.compare c.compare = nil end
+        if k == 1 then c.compare_type = c.compare_type or "and" end
+        table.insert(out, c)
+    end
+    return out
+end
+
+local function record_list(rs)
+    local out = {}
+    for _, r in ipairs(rs or {}) do
+        local rec = {station = r.station, wait_conditions = wait_list(r.wait_conditions or r.wait),
+                     temporary = r.temporary}
+        if r.rail then rec.rail = r.rail end
+        table.insert(out, rec)
+    end
+    return out
+end
+
+-- spec (hex JSON): {records, interrupts: [{name, conditions, targets, inside_interrupt}], group, auto}
+storage.actions.rail_schedule2 = function(player_index, x, y, spec_hex)
+    local surface = storage.agent_characters[player_index].surface
+    local l = surface.find_entities_filtered{type = {"locomotive"}, position = {tonumber(x), tonumber(y)}, radius = 8}[1]
+    if not (l and l.train) then error("\"no locomotive near " .. x .. "," .. y .. "\"") end
+    local t = l.train
+    local spec = helpers.json_to_table(unhex(spec_hex)) or {}
+    if spec.group and spec.group ~= "" then t.group = spec.group end
+    local sch = t.get_schedule()
+    if spec.records then sch.set_records(record_list(spec.records)) end
+    if spec.interrupts then
+        local ints = {}
+        for _, i in ipairs(spec.interrupts) do
+            table.insert(ints, {name = i.name, conditions = wait_list(i.conditions), targets = record_list(i.targets),
+                                inside_interrupt = i.inside_interrupt and true or false})
+        end
+        sch.set_interrupts(ints)
+    end
+    if spec.auto == nil or spec.auto then t.manual_mode = false end
+    local names, ints = {}, {}
+    for _, r in pairs(sch.get_records()) do names[#names + 1] = r.station or "(rail)" end
+    pcall(function() for _, i in pairs(sch.get_interrupts()) do ints[#ints + 1] = i.name end end)
+    return hexout("RAILHEX_", {train = t.id, records = names, interrupts = ints, group = t.group or "",
+                               manual = t.manual_mode})
+end
+
+-- a rail / chain signal for trains travelling travel_d at the straight rail END (x, y): right of
+-- travel, facing travel (measured on the lab: north -> (x+1.5, y-0.5) UP; south -> (x-1.5, y+0.5) DOWN)
+local SIG_OFF = {[0] = {1.5, -0.5}, [4] = {0.5, 1.5}, [8] = {-1.5, 0.5}, [12] = {-0.5, -1.5}}
+storage.actions.rail_signal = function(player_index, x, y, travel_d, chain)
+    local player = storage.agent_characters[player_index]
+    local name = (tonumber(chain) == 1) and "rail-chain-signal" or "rail-signal"
+    local d = tonumber(travel_d) or 0
+    local off = SIG_OFF[d]
+    if not off then error("\"rails signal: travel direction must be 0/4/8/12 (straight ends); got " .. tostring(travel_d) .. "\"") end
+    if player.get_item_count(name) < 1 then error("\"no " .. name .. " in the inventory\"") end
+    local pos = {tonumber(x) + off[1], tonumber(y) + off[2]}
+    local e = player.surface.create_entity{name = name, position = pos, direction = d, force = player.force, raise_built = true}
+    if not e then error("\"cannot place " .. name .. " at " .. pos[1] .. "," .. pos[2] .. "\"") end
+    player.remove_item{name = name, count = 1}
+    local rails = 0
+    pcall(function() rails = #e.get_connected_rails() end)
+    return {x = e.position.x, y = e.position.y, dir = e.direction, rails = rails}
+end
+
+-- clear an area of rail entities back into the inventory (trains are stopped first)
+storage.actions.rail_remove = function(player_index, x, y, radius)
+    local player = storage.agent_characters[player_index]
+    local surface = player.surface
+    local area = {position = {tonumber(x), tonumber(y)}, radius = tonumber(radius) or 20}
+    local out = {stock = 0, stops = 0, signals = 0, rails = 0, left = 0}
+    local groups = {
+        {"stock", {"locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon"}},
+        {"stops", {"train-stop"}},
+        {"signals", {"rail-signal", "rail-chain-signal"}},
+        {"rails", {"straight-rail", "curved-rail-a", "curved-rail-b", "half-diagonal-rail", "rail-ramp", "rail-support"}},
+    }
+    for _, g in ipairs(groups) do
+        local ok = pcall(function()
+            for _, e in pairs(surface.find_entities_filtered{position = area.position, radius = area.radius, type = g[2], force = player.force}) do
+                if e.valid then
+                    if e.train then e.train.manual_mode = true end
+                    if player.mine_entity(e, true) then out[g[1]] = out[g[1]] + 1 else out.left = out.left + 1 end
+                end
+            end
+        end)
+    end
+    return hexout("RAILHEX_", out)
+end
+
+-- a whole consist: spec "1-2" (locos-wagons) or "1-2-1"; the first loco at (x, y) facing d
+storage.actions.rail_consist = function(player_index, x, y, d, spec, fuel_name, fuel_count)
+    local player = storage.agent_characters[player_index]
+    local surface = player.surface
+    d = tonumber(d) or 0
+    local parts = {}
+    for n in string.gmatch(spec or "1-1", "%d+") do parts[#parts + 1] = tonumber(n) end
+    local seq = {}
+    for i = 1, parts[1] or 1 do seq[#seq + 1] = "locomotive" end
+    for i = 1, parts[2] or 0 do seq[#seq + 1] = "cargo-wagon" end
+    for i = 1, parts[3] or 0 do seq[#seq + 1] = "locomotive-back" end
+    local V = {[0] = {0, 1}, [4] = {-1, 0}, [8] = {0, -1}, [12] = {1, 0}}   -- "behind" the front
+    local v = V[d]
+    if not v then error("\"rails consist: direction must be 0/4/8/12\"") end
+    local made, tid = {}, -1
+    for i, nm in ipairs(seq) do
+        local name, dir = nm, d
+        if nm == "locomotive-back" then name, dir = "locomotive", (d + 8) % 16 end
+        if player.get_item_count(name) < 1 then error("\"no " .. name .. " in the inventory for the consist\"") end
+        local pos = {tonumber(x) + v[1] * 7 * (i - 1), tonumber(y) + v[2] * 7 * (i - 1)}
+        local e = surface.create_entity{name = name, position = pos, direction = dir, force = player.force, raise_built = true}
+        if not e then error("\"cannot place " .. name .. " at " .. pos[1] .. "," .. pos[2] .. " (needs straight rail)\"") end
+        player.remove_item{name = name, count = 1}
+        if name == "locomotive" and fuel_name and fuel_name ~= "" then
+            local inv = e.get_fuel_inventory()
+            local n = math.min(player.get_item_count(fuel_name), tonumber(fuel_count) or 0)
+            if inv and n > 0 then
+                local got = inv.insert{name = fuel_name, count = n}
+                if got > 0 then player.remove_item{name = fuel_name, count = got} end
+            end
+        end
+        made[#made + 1] = {n = name, x = e.position.x, y = e.position.y}
+        tid = e.train and e.train.id or tid
+    end
+    local t = nil
+    for _, m in ipairs(made) do
+        local e = surface.find_entities_filtered{position = {m.x, m.y}, radius = 0.5, type = {"locomotive", "cargo-wagon"}}[1]
+        if e and e.train then t = e.train end
+    end
+    return hexout("RAILHEX_", {train = t and t.id or tid, carriages = t and #t.carriages or #made, made = made})
 end
 
 -- the tool entry point: rails(op, ...)

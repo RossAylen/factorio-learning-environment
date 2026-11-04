@@ -196,7 +196,11 @@ class Prototype(enum.Enum, metaclass=PrototypeMetaclass):
     FastSplitter = "fast-splitter", ent.Splitter
     ExpressSplitter = "express-splitter", ent.Splitter
 
-    Rail = "rail", ent.Rail
+    Rail = "rail", ent.Rail   # the ITEM (craft it); the 2.x entities are below
+    StraightRail = "straight-rail", ent.Rail
+    HalfDiagonalRail = "half-diagonal-rail", ent.Rail
+    CurvedRailA = "curved-rail-a", ent.Rail
+    CurvedRailB = "curved-rail-b", ent.Rail
 
     TransportBelt = "transport-belt", ent.TransportBelt
     FastTransportBelt = "fast-transport-belt", ent.TransportBelt
@@ -387,6 +391,10 @@ class Prototype(enum.Enum, metaclass=PrototypeMetaclass):
         TeslaTurret = "tesla-turret", ent.TeslaTurret
         RailSupport = "rail-support", ent.RailSupport
         RailRamp = "rail-ramp", ent.RailRamp
+        ElevatedStraightRail = "elevated-straight-rail", ent.Rail
+        ElevatedHalfDiagonalRail = "elevated-half-diagonal-rail", ent.Rail
+        ElevatedCurvedRailA = "elevated-curved-rail-a", ent.Rail
+        ElevatedCurvedRailB = "elevated-curved-rail-b", ent.Rail
         # Space platform only
         AsteroidCollector = "asteroid-collector", ent.AsteroidCollector
         CargoBay = "cargo-bay", ent.CargoBay

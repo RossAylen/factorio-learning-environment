@@ -22,7 +22,13 @@ class Rails(Tool):
     rails("train", name="locomotive", x=, y=, d=0, fuel="coal", fuel_count=50) -> {x, y, train, fueled}
     rails("stop", x=, y=, d=, name="A") -> {x, y, name, rail}   (train stop, d = travel direction)
     rails("stop_name", x=, y=, name="A") -> name
-    rails("schedule", x=, y=, records=[{"station": "A", "wait": [{"type": "time", "ticks": 300}]}], auto=True)
+    rails("schedule", x=, y=, records=[{"station": "A", "wait_conditions": [{"type": "time", "ticks": 300}]}],
+          interrupts=[{"name", "conditions": [...], "targets": [records], "inside_interrupt": False}],
+          group="Iron", auto=True)   (WaitCondition tables verbatim; compare_type defaults to "and")
+    rails("stop_config", x=, y=, limit=1 (-1 none, 0 closed), priority=50, enable=True) -> stop info
+    rails("signal", x=, y=, d=travel_dir, chain=False) -> {x, y, dir, rails}  (at a straight rail END)
+    rails("remove", x=, y=, radius=20) -> counts (rail entities back into the inventory)
+    rails("consist", x=, y=, d=, spec="1-2", fuel="coal", fuel_count=50) -> {train, carriages}
     """
 
     def __init__(self, *args):
@@ -30,7 +36,9 @@ class Rails(Tool):
 
     def __call__(self, op: str, pieces: Optional[List[Dict]] = None, x: float = 0, y: float = 0, radius: float = 60,
                  name: str = "", d: int = 0, fuel: str = "", fuel_count: int = 0, records: Optional[List[Dict]] = None,
-                 auto: bool = True, reach: float = 10) -> Any:
+                 auto: bool = True, reach: float = 10, limit: Optional[int] = None, priority: Optional[int] = None,
+                 enable: Optional[bool] = None, interrupts: Optional[List[Dict]] = None, group: str = "",
+                 chain: bool = False, spec: str = "1-1") -> Any:
         if op == "place":
             h = json.dumps(list(pieces or [])).encode().hex()
             r, _ = self.execute(self.player_index, "rail_place", h, reach)
@@ -47,8 +55,27 @@ class Rails(Tool):
             r, _ = self.execute(self.player_index, "train_stop_name", x, y, name)
             return r
         elif op == "schedule":
-            h = json.dumps(list(records or [])).encode().hex()
-            r, _ = self.execute(self.player_index, "train_schedule", x, y, h, 1 if auto else 0)
+            spec_ = {"auto": bool(auto)}
+            if records is not None:
+                spec_["records"] = list(records)
+            if interrupts is not None:
+                spec_["interrupts"] = list(interrupts)
+            if group:
+                spec_["group"] = group
+            h = json.dumps(spec_).encode().hex()
+            r, _ = self.execute(self.player_index, "rail_schedule2", x, y, h)
+        elif op == "stop_config":
+            r, _ = self.execute(self.player_index, "rail_stop_config", x, y,
+                                -2 if limit is None else (-1 if limit < 0 else int(limit)),
+                                -2 if priority is None else int(priority),
+                                -2 if enable is None else (1 if enable else 0))
+        elif op == "signal":
+            r, _ = self.execute(self.player_index, "rail_signal", x, y, d, 1 if chain else 0)
+            return r
+        elif op == "remove":
+            r, _ = self.execute(self.player_index, "rail_remove", x, y, radius)
+        elif op == "consist":
+            r, _ = self.execute(self.player_index, "rail_consist", x, y, d, spec, fuel, fuel_count)
         else:
             raise ValueError(f"rails: unknown op {op}")
         return _dec(r)
