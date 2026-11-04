@@ -35,6 +35,15 @@ storage.actions.move_to = function(player_index, path_handle, trailing_entity, i
     local player = storage.utils.ensure_valid_character(player_index)
     local path = storage.paths[path_handle]
     local surface = player.surface
+    -- remember the route (every 2nd point) for walk-back recovery and corridor caching
+    if type(path) == "table" and #path > 0 then
+        local mem = {}
+        for i = 1, #path, 2 do mem[#mem + 1] = {x = path[i].position.x, y = path[i].position.y} end
+        local last = path[#path].position
+        mem[#mem + 1] = {x = last.x, y = last.y}
+        storage.last_paths = storage.last_paths or {}
+        storage.last_paths[player_index] = mem
+    end
 
     -- Check if path is valid
     if not path then
@@ -342,4 +351,38 @@ storage.actions.get_walk_stuck = function(player_index)
     local m = storage.walk_stuck and storage.walk_stuck[player_index]
     if m then storage.walk_stuck[player_index] = nil return m end
     return ""
+end
+
+
+-- walk_back: retrace the last walked route backwards (slow mode) by up to n points; the way in
+-- is a way out when the pathfinder cannot find one (cliff pockets). Returns points queued.
+storage.actions.walk_back = function(player_index, n)
+    local player = storage.utils.ensure_valid_character(player_index)
+    local mem = storage.last_paths and storage.last_paths[player_index]
+    if not mem or #mem < 2 then return 0 end
+    n = tonumber(n) or 30
+    -- start from the stored point nearest the character, go back towards the route's start
+    local best, bd = #mem, math.huge
+    for i, p in ipairs(mem) do
+        local d = (p.x - player.position.x) ^ 2 + (p.y - player.position.y) ^ 2
+        if d < bd then best, bd = i, d end
+    end
+    local q = {}
+    for i = best, math.max(1, best - n), -1 do q[#q + 1] = {x = mem[i].x, y = mem[i].y} end
+    if #q == 0 then return 0 end
+    storage.walking_queues = storage.walking_queues or {}
+    storage.walking_queues[player_index] = {positions = q, current_target = q[1]}
+    player.walking_state = {walking = true, direction = storage.utils.get_direction_with_diagonals(player.position, q[1])}
+    return #q
+end
+
+-- the last walked route, sampled every `step` points: [{x, y}]
+storage.actions.last_path = function(player_index, step)
+    local mem = storage.last_paths and storage.last_paths[player_index] or {}
+    step = tonumber(step) or 10
+    local out = {}
+    for i = 1, #mem, step do out[#out + 1] = mem[i] end
+    if #mem > 0 then out[#out + 1] = mem[#mem] end
+    local j = helpers.table_to_json(out)
+    return "LPHEX_" .. (j:gsub(".", function(ch) return string.format("%02x", ch:byte()) end))
 end

@@ -81,8 +81,33 @@ class MoveTo(Tool):
                 self.game_state.player_location = start
             except Exception:
                 pass
-            # around again from the free spot, then (last resort) through our entities
-            path_handle, err2 = _try_paths(start, (False, True) if slow else (True,))
+            # around again from the free spot
+            path_handle, err2 = _try_paths(start, (False,) if slow else (True,))
+            if path_handle is None and slow:
+                # the way in is a way out: retrace the last walked route, then plan again
+                try:
+                    k = self.connection.rcon_client.send_command(
+                        f"/silent-command rcon.print(storage.actions.walk_back({self.player_index}, 30))")
+                    if k and k.strip() not in ("", "0"):
+                        import time as _t
+                        t0 = _t.time()
+                        while _t.time() - t0 < 60:
+                            sleep(0.5)
+                            rem = self.connection.rcon_client.send_command(
+                                f"/silent-command rcon.print(storage.actions.get_walking_queue_length({self.player_index}))")
+                            if rem == "0":
+                                break
+                        r = self.connection.rcon_client.send_command(
+                            f"/silent-command local p = storage.actions.where({self.player_index}, 0) rcon.print(p.x .. ',' .. p.y)")
+                        px, py = r.strip().split(",")
+                        start = Position(x=float(px), y=float(py))
+                        self.game_state.player_location = start
+                        path_handle, err2 = _try_paths(start, (False,))
+                except Exception:
+                    pass
+            if path_handle is None:
+                # last resort: through our entities
+                path_handle, err2 = _try_paths(start, (True,))
             if path_handle is None:
                 hint = (f" Entities around the character: {around}. Pick up the one toward the target "
                         f"(pickup_entity(...)), walk out, and re-place it." if around else "")

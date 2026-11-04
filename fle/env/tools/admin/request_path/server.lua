@@ -97,8 +97,11 @@ storage.actions.request_path = function(player_index, start_x, start_y, goal_x, 
     }
     if for_walking == 1 or for_walking == "1" or for_walking == true then
         -- a walking character: exactly what blocks the character (belts carry the object
-        -- layer, so the routing mask above walls a character in behind any belt)
+        -- layer, so the routing mask above walls a character in behind any belt), and the
+        -- character's own size: a 1-tile box could not path back out of gaps (between cliffs)
+        -- that the 0.4-tile character had squeezed through
         path_request.collision_mask = prototypes.entity["character"].collision_mask
+        path_request.bounding_box = prototypes.entity["character"].collision_box
     end
     local request_id = surface.request_path(path_request)
 
