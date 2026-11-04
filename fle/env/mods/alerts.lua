@@ -382,7 +382,7 @@ end
 -- Define a function to be called every tick
 -- Incremental: checking every player entity once a second stalled one tick per second for
 -- ~0.15 s on a 5k-entity base. Now a list (no belts/pipes/poles) is refreshed at most every
--- 600 ticks and 40 entities are checked per tick. Cursor and list live in storage, so every
+-- 600 ticks and 10 entities are checked per tick. Cursor and list live in storage, so every
 -- peer (a joined spectator too) walks the same entities.
 local ALERT_SKIP_TYPES = {"transport-belt", "underground-belt", "splitter", "pipe", "pipe-to-ground",
     "electric-pole", "wall", "gate", "character", "entity-ghost", "tile-ghost"}
@@ -399,7 +399,7 @@ local function on_tick(event)
         storage.alert_scan = sc
         storage.alerts = storage.alerts or {}
     end
-    local stop = math.min(sc.i + 39, #sc.list)
+    local stop = math.min(sc.i + 9, #sc.list)
     for k = sc.i, stop do
         local entity = sc.list[k]
         if entity and entity.valid then
