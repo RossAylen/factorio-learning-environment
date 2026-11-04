@@ -105,7 +105,7 @@ storage.actions.audit_read = function(player_index, x0, y0, x1, y1, limit)
                 local ok, nb = pcall(function() return b.belt_neighbours end)
                 if ok and nb and nb.inputs then for _, u in pairs(nb.inputs) do table.insert(queue, u) end end
                 if b.type == "underground-belt" and b.belt_to_ground_type == "output" then
-                    local ok2, o = pcall(function() return b.neighbours end)
+                    local ok2, o = pcall(function() return storage.neighbours(b) end)   -- 2.1: underground_belt_neighbour
                     if ok2 and o then table.insert(queue, o) end
                 end
             end

@@ -89,6 +89,7 @@ class LuaScriptManager:
             print(f"{self.rcon_client.port}: Loading action {script_name} into game")
 
             self.record_source(script_name, script)
+            self.set_current_source(script_name)
             response = self.rcon_client.send_command("/sc " + script)
 
             if response and "error" in response.lower():
@@ -106,10 +107,18 @@ class LuaScriptManager:
         cmd = (
             '/sc local s = rawget(storage, "__fle_src") or {}; storage.__fle_src = s; '
             'local o = rawget(storage, "__fle_order") or {}; storage.__fle_order = o; '
-            f'if s["{key}"] == nil then table.insert(o, "{key}") end; '
+            f'for i = #o, 1, -1 do if o[i] == "{key}" then table.remove(o, i) end end; '
+            f'table.insert(o, "{key}"); '
             f's["{key}"] = [{eq}[{script}]{eq}]'
         )
         self.rcon_client.send_command(cmd)
+
+    def set_current_source(self, name):
+        """Tell the scenario which script the next chunk is: its event handlers are kept
+        under that name (control.lua), the same key a joining client uses when it replays."""
+        key = name.replace("\\", "/").replace('"', "")
+        self.rcon_client.send_command(
+            f'/sc if fle_runtime then fle_runtime.current_src = "{key}" end')
 
     def load_init_into_game(self, name):
         if name not in self.lib_scripts:
@@ -125,6 +134,7 @@ class LuaScriptManager:
             self.update_game_checksum(self.rcon_client, name, checksum)
 
         self.record_source(name, script)
+        self.set_current_source(name)
         response = self.rcon_client.send_command("/c " + script)
 
         if response and "error" in response.lower():

@@ -58,6 +58,12 @@ local function replay_sources()
   if not (sources and order) then return end
   -- storage as seen by replayed code: reads as usual, functions/runtime tables go to
   -- fle_runtime, data writes are dropped (the loaded save already contains them)
+  -- Data writes are dropped only WHILE the sources replay (their top-level setup is already
+  -- in the save). The functions defined here keep this view as their `storage`, so after the
+  -- replay it must write through to the real storage, or every action on a joined client
+  -- would silently lose its writes (storage.walking_queues = ..., storage.paths = ...) and
+  -- the clients state would drift from the servers: a desync.
+  local replaying = true
   local storage_view = setmetatable({}, {
     __index = function(_, key)
       local v = rawget(storage, key)
@@ -65,17 +71,27 @@ local function replay_sources()
       return fle_runtime[key]
     end,
     __newindex = function(_, key, value)
-      if type(value) == "function" or RUNTIME_TABLES[key] then fle_runtime[key] = value end
+      if type(value) == "function" or RUNTIME_TABLES[key] then
+        fle_runtime[key] = value
+      elseif not replaying then
+        storage[key] = value
+      end
     end,
+    __pairs = function() return pairs(storage) end,
   })
-  local env = setmetatable({storage = storage_view}, {__index = _G})
+  -- globals the sources define (dump, serpent helpers, ...) must land in _G as they did on the
+  -- server, or later console commands that use them fail on the joined client only
+  local env = setmetatable({storage = storage_view}, {__index = _G, __newindex = _G})
   for _, name in ipairs(order) do
     local src = sources[name]
     if src then
+      fle_runtime.current_src = name
       local chunk = load(src, "=" .. name, "t", env)
       if chunk then pcall(chunk) end
     end
   end
+  fle_runtime.current_src = nil
+  replaying = false
 end
 
 -- A runtime handler that throws must never take the server down (Factorio stops a
@@ -91,24 +107,42 @@ local function report_handler_error(where, err)
   end
 end
 
+-- Several scripts may register the same event (alerts.lua and utils.lua both use on_tick).
+-- Handlers are kept per SOURCE SCRIPT and run in sorted source order, so the set and the
+-- order are the same on the server (scripts loaded and reloaded over time) and on a client
+-- that replays the sources once: the last registration of each script wins, nothing else.
+local function run_all(tbl, where, event)
+  if not tbl then return end
+  if type(tbl) == "function" then   -- a pre-keyed save: one handler
+    local ok, err = pcall(tbl, event)
+    if not ok then report_handler_error(where, err) end
+    return
+  end
+  local keys = {}
+  for k in pairs(tbl) do keys[#keys + 1] = k end
+  table.sort(keys)
+  for _, k in ipairs(keys) do
+    local ok, err = pcall(tbl[k], event)
+    if not ok then report_handler_error(where .. " (" .. k .. ")", err) end
+  end
+end
+
 local function dispatch_event(event)
   if needs_replay then replay_sources() end
-  local h = fle_runtime.handlers[event.name]
-  if h then
-    local ok, err = pcall(h, event)
-    if not ok then report_handler_error("event " .. tostring(event.name), err) end
-  end
+  run_all(fle_runtime.handlers[event.name], "event " .. tostring(event.name), event)
 end
 
 local function make_nth_dispatcher(n)
   return function(event)
     if needs_replay then replay_sources() end
-    local h = fle_runtime.nth[n]
-    if h then
-      local ok, err = pcall(h, event)
-      if not ok then report_handler_error("nth_tick " .. n, err) end
-    end
+    run_all(fle_runtime.nth[n], "nth_tick " .. n, event)
   end
+end
+
+local function keyed_set(tbl, id, handler)
+  local cur = tbl[id]
+  if type(cur) ~= "table" then cur = {} tbl[id] = cur end
+  cur[fle_runtime.current_src or "_"] = handler
 end
 
 local function register_dispatchers()
@@ -124,7 +158,7 @@ script = setmetatable({}, {
         local ids = type(id) == "table" and id or {id}
         for _, one in pairs(ids) do
           if DISPATCHED_EVENTS[one] then
-            fle_runtime.handlers[one] = handler
+            keyed_set(fle_runtime.handlers, one, handler)
           else
             real_script.on_event(one, handler, filters)
           end
@@ -133,7 +167,7 @@ script = setmetatable({}, {
     elseif key == "on_nth_tick" then
       return function(n, handler)
         if n and DISPATCHED_NTH_SET[n] then
-          fle_runtime.nth[n] = handler
+          keyed_set(fle_runtime.nth, n, handler)
         else
           real_script.on_nth_tick(n, handler)
         end

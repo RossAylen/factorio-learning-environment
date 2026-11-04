@@ -45,12 +45,11 @@ storage.actions.look = function(player_index, x, y, radius, names_hex, all_types
             table.insert(d, "fuel " .. (inv_text(e.burner.inventory) or "0"))
         end
         pcall(function()
-            local fb = e.fluidbox
-            if fb and #fb > 0 then
-                for i = 1, math.min(#fb, 3) do
-                    local f = fb[i]
-                    if f then table.insert(d, f.name .. "=" .. math.floor(f.amount)) end
-                end
+            local c = e.get_fluid_contents and e.get_fluid_contents() or {}   -- 2.1: no e.fluidbox
+            local k = 0
+            for name, amt in pairs(c) do
+                k = k + 1
+                if k <= 3 then table.insert(d, name .. "=" .. math.floor(amt)) end
             end
         end)
         return table.concat(d, ", ")

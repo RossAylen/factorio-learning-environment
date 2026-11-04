@@ -1,7 +1,9 @@
 -- move_to
 
 -- Register the tick handler when the module is loaded
-if not storage.fast then
+-- registered unconditionally: a joining client replays this with whatever storage.fast the
+-- save holds, so a conditional registration made the handler sets differ (desync)
+do
     script.on_nth_tick(5, function(event)
         if storage.walking_queues then
             local ok, err = pcall(storage.actions.update_walking_queues)
