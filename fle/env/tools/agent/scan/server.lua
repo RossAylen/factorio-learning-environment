@@ -20,6 +20,7 @@ storage.actions.scan = function(player_index, names_hex, x, y, radius, limit)
                                                      name = names, force = player.force}) do
         if #out >= limit then break end
         local r = {n = e.name, x = e.position.x, y = e.position.y}
+        if e.type == "electric-pole" then r.net = e.electric_network_id end
         local s = e.status and st[e.status]
         if s then r.s = s end
         if e.type == "container" or e.type == "logistic-container" then
