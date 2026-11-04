@@ -138,7 +138,10 @@ storage.actions.audit_read = function(player_index, x0, y0, x1, y1, limit)
                 for _, ing in pairs(r.ingredients) do
                     table.insert(need, {ing.name, ing.type == "fluid" and "fluid" or "item", ing.amount})
                 end
-                for _, pr in pairs(r.products) do table.insert(rec.p, pr.name) end
+                for _, pr in pairs(r.products) do
+                    table.insert(rec.p, pr.name)
+                    if pr.type == "item" then rec.pi = (rec.pi or 0) + 1 end
+                end
             end
         elseif e.type == "lab" then
             for _, pk in ipairs(research_packs) do table.insert(need, {pk, "item", 1}) end
@@ -148,6 +151,7 @@ storage.actions.audit_read = function(player_index, x0, y0, x1, y1, limit)
             table.insert(need, {"fuel", "fuel", 1})
         end
         local feeders = drops_into[e.unit_number] or {}
+        if rec.s == "working" and e.type ~= "lab" then need = {} end   -- running: evidently fed
         if e.type == "ammo-turret" then   -- a turret with a load is fine whatever feeds it now
             local inv = e.get_inventory(defines.inventory.turret_ammo)
             if inv and inv.get_item_count() >= 5 then need = {} end
@@ -156,18 +160,13 @@ storage.actions.audit_read = function(player_index, x0, y0, x1, y1, limit)
             local item, kind, amt = nd[1], nd[2], nd[3]
             local res = {item, 0, "no_inserter", amt}
             if kind == "fluid" then
+                -- Factorio 2.1: no LuaEntity.fluidbox; the machine's own fluid contents tell
                 local ok_f = false
                 pcall(function()
-                    for i = 1, #e.fluidbox do
-                        local f = e.fluidbox[i]
-                        if f and f.name == item then ok_f = true end
-                        local c = e.fluidbox.get_connections(i)
-                        if c and #c > 0 and e.fluidbox.get_prototype(i).production_type == "input" then
-                            ok_f = ok_f or (#c > 0)
-                        end
-                    end
+                    local c = e.get_fluid_contents()
+                    if c and (c[item] or 0) > 0 then ok_f = true end
                 end)
-                res = {item, ok_f and 1 or 0, ok_f and "ok" or "no_pipe", amt}
+                res = {item, ok_f and 1 or 0, ok_f and "ok" or "no_fluid_in_it", amt}
             elseif #feeders > 0 then
                 res = {item, 0, "source_lacks", amt}
                 for _, ins in ipairs(feeders) do
@@ -197,7 +196,7 @@ storage.actions.audit_read = function(player_index, x0, y0, x1, y1, limit)
             end
             table.insert(rec.inp, res)
         end
-        if #rec.p > 0 and not picks_from[e.unit_number] and e.type ~= "lab" and e.type ~= "ammo-turret" and e.type ~= "boiler" then
+        if (rec.pi or 0) > 0 and not picks_from[e.unit_number] and e.type ~= "lab" and e.type ~= "ammo-turret" and e.type ~= "boiler" then
             rec.no_taker = 1
         end
         local pk = picks_from[e.unit_number]
