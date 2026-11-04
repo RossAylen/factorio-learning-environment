@@ -19,6 +19,37 @@ local function ar_startable(tech, queued)
     return true
 end
 
+-- useful red/green research to fill idle labs while a pack (blue) is missing
+local AR_FALLBACK = {"circuit-network", "bulk-inserter", "modules", "explosives", "landfill", "solar-energy",
+    "concrete", "gate", "automobilism", "stronger-explosives-1"}
+
+-- a pack is FED when the labs hold some or the factory made some in the last minute
+local function ar_fed_packs(force)
+    local stock = {}
+    for _, lab in pairs(game.surfaces[1].find_entities_filtered{type = "lab", force = force}) do
+        local inv = lab.get_inventory(defines.inventory.lab_input)
+        if inv then for _, it in pairs(inv.get_contents()) do stock[it.name] = (stock[it.name] or 0) + it.count end end
+    end
+    local stats = force.get_item_production_statistics(game.surfaces[1])
+    local memo = {}
+    return function(pack)
+        if memo[pack] == nil then
+            local made = 0
+            pcall(function() made = stats.get_flow_count{name = pack, category = "input",
+                precision_index = defines.flow_precision_index.one_minute, count = true} end)
+            memo[pack] = (stock[pack] or 0) >= 1 or (made or 0) > 0
+        end
+        return memo[pack]
+    end
+end
+
+local function ar_all_fed(tech, fed)
+    for _, ing in pairs(tech.research_unit_ingredients) do
+        if not fed(ing.name) then return false end
+    end
+    return #tech.research_unit_ingredients > 0
+end
+
 local function ar_refill()
     local force = game.forces.player
     if not force then return {} end
@@ -26,7 +57,48 @@ local function ar_refill()
     for _, t in pairs(force.research_queue or {}) do
         table.insert(q, t.name) queued[t.name] = true
     end
-    if #q >= AR_MIN then return q end
+    -- one tech at a time: the head must be one the labs can actually run. Take the first fed,
+    -- startable tech from priority list, then queue, then the fallback list; switch back once
+    -- the missing pack arrives (progress is kept per tech).
+    local fed = ar_fed_packs(force)
+    local head = q[1] and force.technologies[q[1]]
+    if not (head and ar_all_fed(head, fed)) then
+        local pick = nil
+        local function try(name)
+            if pick then return end
+            local t = force.technologies[name]
+            if t and (queued[name] or ar_startable(t, {})) and ar_all_fed(t, fed) then pick = name end
+        end
+        for _, n in ipairs(storage.research_priority or {}) do try(n) end
+        for _, n in ipairs(q) do try(n) end
+        for _, n in ipairs(AR_FALLBACK) do try(n) end
+        if pick and pick ~= q[1] then
+            local nq = {pick}
+            for _, n in ipairs(q) do if n ~= pick then nq[#nq + 1] = n end end
+            q = nq
+            queued[pick] = true
+            storage.research_auto_switch = {tick = game.tick, to = pick}
+        end
+    elseif storage.research_priority then
+        -- the head is fine; but a higher-priority tech that is now fed goes first again
+        for _, n in ipairs(storage.research_priority) do
+            if n == q[1] then break end
+            local t = force.technologies[n]
+            if t and (queued[n] or ar_startable(t, {})) and ar_all_fed(t, fed) then
+                local nq = {n}
+                for _, m in ipairs(q) do if m ~= n then nq[#nq + 1] = m end end
+                q = nq
+                queued[n] = true
+                break
+            end
+        end
+    end
+    while #q > AR_MAX do table.remove(q) end
+    if #q >= AR_MIN then
+        pcall(function() force.research_queue = q end)
+        storage.research_auto_last = {tick = game.tick, queue = q}
+        return q
+    end
     for _, name in ipairs(storage.research_priority or {}) do
         if #q >= AR_MAX then break end
         local tech = force.technologies[name]
