@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import functools
 import os
 import platform
 import subprocess
@@ -17,6 +18,26 @@ from fle.commons.space_age import space_age_enabled
 START_RCON_PORT = 27000
 START_GAME_PORT = 34197
 RCON_PASSWORD = "factorio"
+
+
+@functools.lru_cache(maxsize=None)
+def _warn_once(msg: str) -> None:
+    print(msg)
+
+
+@functools.lru_cache(maxsize=1)
+def docker_is_rootless() -> bool:
+    """True when the docker CLI talks to a rootless daemon."""
+    try:
+        out = subprocess.run(
+            ["docker", "info", "--format", "{{json .SecurityOptions}}"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        ).stdout
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    return "rootless" in out
 
 
 def resolve_state_dir() -> Path:
@@ -120,8 +141,16 @@ class ComposeGenerator:
     def host_network() -> bool:
         """FLE_HOST_NETWORK=1: run servers on the host network so LAN broadcasts reach
         real clients (the Multiplayer > LAN browser). Each instance then listens on its own
-        host ports (START_GAME_PORT + i / START_RCON_PORT + i) instead of mapped ports."""
-        return os.environ.get("FLE_HOST_NETWORK", "").lower() in ("1", "true", "yes")
+        host ports (START_GAME_PORT + i / START_RCON_PORT + i) instead of mapped ports.
+
+        Ignored under rootless Docker: there "host" is rootlesskit's private network
+        namespace, so the servers would be unreachable. Join with a direct connect
+        (--mp-connect <host>:<port>) instead of the LAN browser."""
+        wanted = os.environ.get("FLE_HOST_NETWORK", "").lower() in ("1", "true", "yes")
+        if wanted and docker_is_rootless():
+            _warn_once("FLE_HOST_NETWORK ignored: rootless Docker has no host network; using mapped ports.")
+            return False
+        return wanted
 
     def _command(self, index: int = 0):
         game_port, rcon_port = self.internal_game_port, self.internal_rcon_port
@@ -300,6 +329,12 @@ class ComposeGenerator:
             if self.host_network():
                 service.pop("ports")
                 service["network_mode"] = "host"
+            if docker_is_rootless():
+                # Rootless Docker maps container root to the invoking host user, so
+                # bind mounts owned by that user are only writable by container root
+                # (the image's "factorio" user maps to an unrelated subuid). This is
+                # not host root: container root has no more rights than the user.
+                service["user"] = "0:0"
             services[f"factorio_{i}"] = service
         return services
 
