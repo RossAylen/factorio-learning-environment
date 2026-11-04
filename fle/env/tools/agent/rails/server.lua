@@ -279,11 +279,17 @@ storage.actions.rail_signal = function(player_index, x, y, travel_d, chain)
     if not off then error("\"rails signal: travel direction must be 0/4/8/12 (straight ends); got " .. tostring(travel_d) .. "\"") end
     if player.get_item_count(name) < 1 then error("\"no " .. name .. " in the inventory\"") end
     local pos = {tonumber(x) + off[1], tonumber(y) + off[2]}
-    local e = player.surface.create_entity{name = name, position = pos, direction = d, force = player.force, raise_built = true}
+    -- measured: the signal stands right of travel and FACES the oncoming train (direction
+    -- travel+8); with direction = travel it is placed but attaches to no rail
+    local e = player.surface.create_entity{name = name, position = pos, direction = (d + 8) % 16, force = player.force, raise_built = true}
     if not e then error("\"cannot place " .. name .. " at " .. pos[1] .. "," .. pos[2] .. "\"") end
-    player.remove_item{name = name, count = 1}
     local rails = 0
     pcall(function() rails = #e.get_connected_rails() end)
+    if rails == 0 then
+        e.destroy()
+        error("\"" .. name .. " at " .. pos[1] .. "," .. pos[2] .. " does not attach to a rail: (x, y) must be a straight rail END and d the travel direction\"")
+    end
+    player.remove_item{name = name, count = 1}
     return {x = e.position.x, y = e.position.y, dir = e.direction, rails = rails}
 end
 
