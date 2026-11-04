@@ -306,7 +306,8 @@ class FactorioNamespace:
     def __setitem__(self, key, value):
         setattr(self, key, value)
 
-    def log(self, *arg):
+    def log(self, *arg, **_print_kwargs):
+        # print(..., flush=True / end= / sep= / file=) habits: accepted and ignored
         if self.execution_trace:
             self.log_counter += 1  # Increment counter
             self.logging_results[self.log_counter] = [
