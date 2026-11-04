@@ -76,40 +76,36 @@ class PlaceObject(Tool):
             except Exception:
                 raise Exception(f"Could not place {name} at ({x}, {y})", e)
 
-        # If we are in `slow` mode, there is a delay between placing the entity and the entity being created
-        if not self.game_state.instance.fast:
-            sleep(1)
-            return self.get_entity(entity, position)
-        else:
-            if not isinstance(response, dict) and "in inventory" in str(response) and "No " in str(response):
-                inv = str(response).split("Current inventory:", 1)[-1].replace(chr(34), "").replace(chr(39), "").strip()
-                raise Exception(
-                    f"Could not place {name} at ({x}, {y}): no {name} in the inventory - "
-                    f"craft_item(Prototype.{entity.name}, 1) (or precraft/fetch) first. Inventory: {inv}"
-                )
-            if not isinstance(response, dict):
-                try:
-                    msg = (
-                        str(response)
-                        .split(":")[-1]
-                        .replace('"', "")
-                        .replace("'", "")
-                        .strip()
-                    )
-                except:
-                    msg = str(response).lstrip()
-                raise Exception(f"Could not place {name} at ({x}, {y}), {msg}")
-
-            cleaned_response = self.clean_response(response)
-
+        # placement is synchronous in both modes (server.lua)
+        if not isinstance(response, dict) and "in inventory" in str(response) and "No " in str(response):
+            inv = str(response).split("Current inventory:", 1)[-1].replace(chr(34), "").replace(chr(39), "").strip()
+            raise Exception(
+                f"Could not place {name} at ({x}, {y}): no {name} in the inventory - "
+                f"craft_item(Prototype.{entity.name}, 1) (or precraft/fetch) first. Inventory: {inv}"
+            )
+        if not isinstance(response, dict):
             try:
-                object = metaclass(
-                    prototype=entity.name, game=self.connection, **cleaned_response
+                msg = (
+                    str(response)
+                    .split(":")[-1]
+                    .replace('"', "")
+                    .replace("'", "")
+                    .strip()
                 )
-            except Exception as e:
-                raise Exception(
-                    f"Could not create {name} object from response (place entity): {cleaned_response}",
-                    e,
-                )
+            except:
+                msg = str(response).lstrip()
+            raise Exception(f"Could not place {name} at ({x}, {y}), {msg}")
 
-            return object
+        cleaned_response = self.clean_response(response)
+
+        try:
+            object = metaclass(
+                prototype=entity.name, game=self.connection, **cleaned_response
+            )
+        except Exception as e:
+            raise Exception(
+                f"Could not create {name} object from response (place entity): {cleaned_response}",
+                e,
+            )
+
+        return object

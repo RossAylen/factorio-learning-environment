@@ -41,17 +41,8 @@ storage.actions.inspect_inventory = function(player_index, is_character_inventor
            error("No valid entity at given coordinates.")
        end
 
-       if not is_fast then
-           player.opened = closest_entity
-           script.on_nth_tick(60, function()
-               if automatic_close == True then
-                   if closest_entity and closest_entity.valid then
-                       player.opened = nil
-                   end
-                   automatic_close = False
-               end
-           end)
-       end
+       -- (slow mode used to open the GUI and register a global on_nth_tick(60) to close it;
+       --  that overwrote every other nth_tick(60) handler)
 
        -- Factorio 2.0: unified crafter_input/crafter_output for furnaces, assemblers, rocket silos
        if closest_entity.type == "furnace" or closest_entity.type == "assembling-machine" or closest_entity.type == "rocket-silo" then

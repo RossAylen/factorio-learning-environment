@@ -451,10 +451,9 @@ storage.actions.place_entity = function(player_index, entity, direction, x, y, e
     storage.utils.avoid_entity(player_index, entity, position)
 
     -- Choose placement method based on storage.fast setting
-    if storage.fast then
-        return fast_place()
-    else
-        local result = slow_place()
-        return result
-    end
+    -- Slow (real-time) mode used to defer the placement into a global on_nth_tick(60) handler:
+    -- one slot shared by every agent (parallel placements overwrote each other), none of
+    -- fast_place's checks, and an error() inside the handler crashed the server. A player in
+    -- reach places instantly, so both modes place synchronously and report failures here.
+    return fast_place()
 end

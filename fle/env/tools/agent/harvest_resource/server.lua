@@ -104,7 +104,7 @@ local function add_entities_to_queue(queue, entities, count)
     return expected_yield
 end
 
-script.on_nth_tick(15, function(event)
+local function _harvest_tick(event)
     -- If no queues at all, just return
     if not storage.harvest_queues then return end
 
@@ -204,6 +204,15 @@ script.on_nth_tick(15, function(event)
             end
         end
         ::continue::
+    end
+end
+script.on_nth_tick(15, function(event)
+    local ok, err = pcall(_harvest_tick, event)
+    if not ok then
+        storage.tool_errors = storage.tool_errors or {}
+        table.insert(storage.tool_errors, {tick = game.tick, tool = "harvest_resource", err = tostring(err)})
+                if storage.ev and storage.ev.q then table.insert(storage.ev.q, {k = "script_error", where = "harvest_resource tick handler", msg = string.sub(tostring(err), 1, 300), tick = game.tick}) end
+        storage.harvest_queues = {}
     end
 end)
 

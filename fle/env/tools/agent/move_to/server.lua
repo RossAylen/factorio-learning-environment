@@ -4,7 +4,13 @@
 if not storage.fast then
     script.on_nth_tick(5, function(event)
         if storage.walking_queues then
-            storage.actions.update_walking_queues()
+            local ok, err = pcall(storage.actions.update_walking_queues)
+            if not ok then
+                storage.tool_errors = storage.tool_errors or {}
+                table.insert(storage.tool_errors, {tick = game.tick, tool = "move_to", err = tostring(err)})
+                if storage.ev and storage.ev.q then table.insert(storage.ev.q, {k = "script_error", where = "move_to tick handler", msg = string.sub(tostring(err), 1, 300), tick = game.tick}) end
+                storage.walking_queues = {}
+            end
         end
     end)
 end
