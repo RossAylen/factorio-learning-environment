@@ -7,7 +7,7 @@ storage.actions.restore_entities = function(player_index, plan_hex, dry_run)
     local surface = player.surface
     local json = plan_hex:gsub("%x%x", function(h) return string.char(tonumber(h, 16)) end)
     local plan = helpers.json_to_table(json) or {}
-    local placed, present, blocked, short = 0, 0, 0, {}
+    local placed, present, blocked, short, flipped = 0, 0, 0, {}, 0
     local last = player.position
     for _, p in ipairs(plan) do
         local proto = prototypes.entity[p.n]
@@ -15,6 +15,20 @@ storage.actions.restore_entities = function(player_index, plan_hex, dry_run)
             local here = surface.find_entities_filtered{position = {p.x, p.y}, name = p.n, force = player.force}
             if #here > 0 then
                 present = present + 1
+                -- an underground of the wrong kind (two inputs): re-create it with the plan type and
+                -- direction (rotate() would flip the flow too)
+                local h = here[1]
+                if p.t and h.type == "underground-belt" and h.belt_to_ground_type ~= p.t and not dry_run then
+                    local pos = h.position
+                    if player.mine_entity(h, true) then
+                        local e = surface.create_entity{name = p.n, position = pos, direction = p.d or 0, type = p.t,
+                                                        force = player.force, move_stuck_players = true}
+                        if e then
+                            player.remove_item({name = p.n, count = 1})
+                            flipped = flipped + 1
+                        end
+                    end
+                end
             else
                 local item = proto.items_to_place_this and proto.items_to_place_this[1]
                 local iname = item and (item.name or item)
@@ -67,7 +81,7 @@ storage.actions.restore_entities = function(player_index, plan_hex, dry_run)
     end
     local short_list = {}
     for k, v in pairs(short) do table.insert(short_list, {item = k, count = v}) end
-    local out = {placed = placed, present = present, blocked = blocked, short = short_list}
+    local out = {placed = placed, present = present, blocked = blocked, short = short_list, flipped = flipped}
     local j = helpers.table_to_json(out)
     return "RESTOREHEX_" .. (j:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
