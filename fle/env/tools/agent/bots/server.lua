@@ -133,6 +133,22 @@ B.unit_wm = function(player, spec)
     return {cutoff = cutoff or (oldest and oldest.u), exact = cutoff ~= nil, marks = #wm, tick = game.tick}
 end
 
+-- resources under drill spots: spec.pts = [[x, y], ...], spec.r (half side, 2.5 = electric drill) ->
+-- {at = [{name = amount}, ...]} (same order)
+B.ore_at = function(player, spec)
+    local s = player.surface
+    local r = spec.r or 2.5
+    local out = {}
+    for i, p in ipairs(spec.pts or {}) do
+        local c = {}
+        for _, e in pairs(s.find_entities_filtered{area = {{p[1] - r, p[2] - r}, {p[1] + r, p[2] + r}}, type = "resource"}) do
+            c[e.name] = (c[e.name] or 0) + e.amount
+        end
+        out[i] = c
+    end
+    return {at = out}
+end
+
 -- spec.pi, spec.clear: the units this agent created during the current transaction (still alive)
 B.txn = function(player, spec)
     storage.txn_units = storage.txn_units or {}
