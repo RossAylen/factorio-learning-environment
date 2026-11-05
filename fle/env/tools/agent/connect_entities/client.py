@@ -850,9 +850,14 @@ class ConnectEntities(Tool):
             if hasattr(group, "belts"):
                 group.belts = _deduplicate_entities(group.belts)
 
-        # Handle belt rotation for group connections
+        # Handle belt rotation for group connections - only belts this connection placed: a
+        # pre-existing belt (another line's trunk) is never turned (it would cut that line)
+        _new_pos = {(round(getattr(e, "position", None).x, 1), round(e.position.y, 1))
+                    for e in groupable_entities if getattr(e, "position", None) is not None}
         if (
             isinstance(source_entity, BeltGroup) and entity_groups
+            and source_entity.outputs
+            and (round(source_entity.outputs[0].position.x, 1), round(source_entity.outputs[0].position.y, 1)) in _new_pos
         ):  # isinstance(target_entity, BeltGroup):
             self.rotate_end_belt_to_face(source_entity, entity_groups[0])
             # self.rotate_final_belt_when_connecting_groups(source_entity, entity_groups[0])
