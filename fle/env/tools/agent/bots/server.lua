@@ -190,6 +190,20 @@ B.naturals = function(player, spec)
     return {e = out}
 end
 
+-- unpowered: the same count as Ross's map HUD (status no_power / low_power over machines, inserters,
+-- labs, turrets, radars, pumps) with positions
+B.unpowered = function(player, spec)
+    local st = defines.entity_status
+    local none, low = {}, {}
+    for _, e in pairs(player.surface.find_entities_filtered{force = player.force, type = {"assembling-machine", "furnace",
+            "mining-drill", "inserter", "lab", "electric-turret", "radar", "pump", "offshore-pump"}}) do
+        local v = e.status
+        if v == st.no_power then none[#none + 1] = {n = e.name, x = e.position.x, y = e.position.y}
+        elseif v == st.low_power then low[#low + 1] = {n = e.name, x = e.position.x, y = e.position.y} end
+    end
+    return {none = none, low = low}
+end
+
 -- tree stumps (corpses, no item) in an area: removed - they block rail pieces
 B.stumps = function(player, spec)
     local n = 0
