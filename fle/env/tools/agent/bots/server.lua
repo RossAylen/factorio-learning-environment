@@ -204,6 +204,43 @@ B.unpowered = function(player, spec)
     return {none = none, low = low}
 end
 
+-- power model for pole pruning: every pole (unit, supply distance, wire reach, copper neighbours, network
+-- id) and every electric consumer (unit, centre, footprint half-size) in an area
+B.power_model = function(player, spec)
+    local s = player.surface
+    local area = {{spec.x0, spec.y0}, {spec.x1, spec.y1}}
+    local poles, cons = {}, {}
+    for _, p in pairs(s.find_entities_filtered{area = area, type = "electric-pole", force = player.force}) do
+        local nb = {}
+        pcall(function()
+            local c = p.get_wire_connector(defines.wire_connector_id.pole_copper, false)
+            if c then for _, cn in pairs(c.connections) do
+                local o = cn.target.owner
+                if o and o.valid and o.type == "electric-pole" then nb[#nb + 1] = o.unit_number end
+            end end
+        end)
+        local sd = 2.5
+        pcall(function() sd = p.prototype.get_supply_area_distance(p.quality) end)
+        local wr = 7.5
+        pcall(function() wr = p.prototype.get_max_wire_distance(p.quality) end)
+        poles[#poles + 1] = {u = p.unit_number, n = p.name, x = p.position.x, y = p.position.y, s = sd, w = wr, nb = nb,
+                             net = p.electric_network_id}
+    end
+    for _, e in pairs(s.find_entities_filtered{area = area, force = player.force}) do
+        if e.valid and e.type ~= "electric-pole" and e.unit_number then
+            local ok, elec = pcall(function() return e.prototype.electric_energy_source_prototype ~= nil end)
+            if ok and elec then
+                local bb = e.prototype.collision_box
+                local hw = math.max(0.5, (bb.right_bottom.x - bb.left_top.x) / 2)
+                local hh = math.max(0.5, (bb.right_bottom.y - bb.left_top.y) / 2)
+                cons[#cons + 1] = {u = e.unit_number, n = e.name, x = e.position.x, y = e.position.y, hw = hw, hh = hh,
+                                   on = e.is_connected_to_electric_network()}
+            end
+        end
+    end
+    return {poles = poles, cons = cons}
+end
+
 -- tree stumps (corpses, no item) in an area: removed - they block rail pieces
 B.stumps = function(player, spec)
     local n = 0
