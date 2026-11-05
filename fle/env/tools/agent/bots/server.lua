@@ -443,10 +443,30 @@ B.ug_pair = function(player, spec)
     local dx, dy = spec.bx - spec.ax, spec.by - spec.ay
     local d = (math.abs(dx) >= math.abs(dy)) and (dx > 0 and defines.direction.east or defines.direction.west)
               or (dy > 0 and defines.direction.south or defines.direction.north)
+    -- say WHAT is in the way (the old "cannot place the entrance" left agents guessing)
+    local function blocker(x, y)
+        local out = {}
+        for _, e in pairs(s.find_entities_filtered{position = {x, y}, radius = 0.45}) do
+            if e.type ~= "character" then out[#out + 1] = e.name .. "@" .. e.position.x .. "," .. e.position.y end
+        end
+        local t = s.get_tile(x, y)
+        if t and t.valid and t.collides_with and pcall(function() return t.collides_with("water_tile") end) and t.collides_with("water_tile") then out[#out + 1] = "water" end
+        return #out > 0 and table.concat(out, " ") or "nothing visible (a cliff/ghost/reserved tile?)"
+    end
+    local span = math.max(math.abs(dx), math.abs(dy)) - 1
+    local maxd = 4
+    pcall(function() maxd = prototypes.entity[name].max_underground_distance end)
+    if span > maxd then error('"bots ug_pair: span ' .. span .. ' tiles is longer than ' .. name .. ' reaches (' .. maxd .. ')"') end
+    -- create_entity does not check collisions: it put an entrance ON a chest
+    for _, q in ipairs({{spec.ax, spec.ay, "entrance"}, {spec.bx, spec.by, "exit"}}) do
+        if not s.can_place_entity{name = name, position = {q[1], q[2]}, direction = d, force = player.force} then
+            error('"bots ug_pair: cannot place the ' .. q[3] .. ' at ' .. q[1] .. ',' .. q[2] .. ': ' .. blocker(q[1], q[2]) .. '"')
+        end
+    end
     local a = s.create_entity{name = name, position = {spec.ax, spec.ay}, direction = d, type = "input", force = player.force, raise_built = true}
-    if not a then error('"bots ug_pair: cannot place the entrance"') end
+    if not a then error('"bots ug_pair: cannot place the entrance at ' .. spec.ax .. ',' .. spec.ay .. ': ' .. blocker(spec.ax, spec.ay) .. '"') end
     local b = s.create_entity{name = name, position = {spec.bx, spec.by}, direction = d, type = "output", force = player.force, raise_built = true}
-    if not b then a.destroy() error('"bots ug_pair: cannot place the exit"') end
+    if not b then a.destroy() error('"bots ug_pair: cannot place the exit at ' .. spec.bx .. ',' .. spec.by .. ': ' .. blocker(spec.bx, spec.by) .. '"') end
     player.remove_item{name = name, count = 2}
     local nb = nil
     pcall(function() nb = storage.neighbours and storage.neighbours(a) or nil end)
