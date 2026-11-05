@@ -65,7 +65,12 @@ B.area = function(player, spec)
             if e.type == "assembling-machine" then
                 pcall(function() local rc = e.get_recipe() if rc then r.r = rc.name end end)
             end
-            if e.type == "underground-belt" then r.t = e.belt_to_ground_type end
+            if e.type == "underground-belt" then
+                r.t = e.belt_to_ground_type
+                local nb = nil
+                pcall(function() nb = storage.neighbours and storage.neighbours(e) or nil end)
+                if nb and nb.valid then r.px, r.py = nb.position.x, nb.position.y end
+            end
             if spec.items and (e.type == "transport-belt" or e.type == "underground-belt" or e.type == "splitter") then
                 local lanes = {}
                 for li = 1, math.min(2, e.get_max_transport_line_index()) do
