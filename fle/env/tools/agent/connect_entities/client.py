@@ -47,6 +47,19 @@ from fle.env.tools import Tool
 from collections.abc import Set as AbstractSet
 
 
+
+def _route_radius(entities, source_pos, margin=3.0, cap=300.0):
+    """Radius around source_pos that covers the entities just placed: the group re-read after a
+    connection used get_entities' default radius 1000 - every belt/pole of the base serialised in
+    one tick (72 s on the live base)."""
+    import math as _m
+    best = 5.0
+    for e in entities or []:
+        p = getattr(e, "position", None)
+        if p is not None:
+            best = max(best, _m.dist((p.x, p.y), (source_pos.x, source_pos.y)) + margin)
+    return min(best, cap)
+
 class ConnectEntities(Tool):
     def __init__(self, connection, game_state):
         super().__init__(connection, game_state)
@@ -877,6 +890,7 @@ class ConnectEntities(Tool):
                 Prototype.ExpressUndergroundBelt,
             },
             source_pos,
+            radius=_route_radius(groupable_entities, source_pos),
         )
 
         for group in entity_groups:
@@ -1004,7 +1018,8 @@ class ConnectEntities(Tool):
     ) -> List[PipeGroup]:
         """Process pipe groups"""
         entity_groups = self.get_entities(
-            {Prototype.Pipe, Prototype.UndergroundPipe}, source_pos
+            {Prototype.Pipe, Prototype.UndergroundPipe}, source_pos,
+            radius=_route_radius(groupable_entities, source_pos),
         )
 
         for group in entity_groups:
@@ -1021,7 +1036,7 @@ class ConnectEntities(Tool):
         source_pos: Position,
     ) -> List[PipeGroup]:
         """Process other groups"""
-        entity_groups = self.get_entities(prototype, source_pos)
+        entity_groups = self.get_entities(prototype, source_pos, radius=_route_radius(groupable_entities, source_pos))
 
         for group in entity_groups:
             group.entities = _deduplicate_entities(group.entities)
@@ -1074,6 +1089,7 @@ class ConnectEntities(Tool):
                     Prototype.MediumElectricPole,
                 },
                 source_pos,
+                radius=_route_radius(groupable_entities, source_pos),
             ),
         )
 
