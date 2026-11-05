@@ -337,28 +337,50 @@ storage.actions.rail_signal = function(player_index, x, y, travel_d, chain)
 end
 
 -- clear an area of rail entities back into the inventory (trains are stopped first)
-storage.actions.rail_remove = function(player_index, x, y, radius)
+-- remove: an EXACT piece by default (area 0.5 around x, y), only the kinds asked for ("rail,signal" by
+-- default; "stop" / "stock" must be named), optional name and direction filters. More than one match
+-- needs count= equal to the match count, else it refuses with the list. dry = 1 only lists.
+storage.actions.rail_remove = function(player_index, x, y, area, kinds_csv, name, d, count, dry)
     local player = storage.agent_characters[player_index]
     local surface = player.surface
-    local area = {position = {tonumber(x), tonumber(y)}, radius = tonumber(radius) or 20}
-    local out = {stock = 0, stops = 0, signals = 0, rails = 0, left = 0}
-    local groups = {
-        {"stock", {"locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon"}},
-        {"stops", {"train-stop"}},
-        {"signals", {"rail-signal", "rail-chain-signal"}},
-        {"rails", {"straight-rail", "curved-rail-a", "curved-rail-b", "half-diagonal-rail", "rail-ramp", "rail-support"}},
-    }
-    for _, g in ipairs(groups) do
-        local ok = pcall(function()
-            for _, e in pairs(surface.find_entities_filtered{position = area.position, radius = area.radius, type = g[2], force = player.force}) do
-                if e.valid then
-                    if e.train then e.train.manual_mode = true end
-                    if player.mine_entity(e, true) then out[g[1]] = out[g[1]] + 1 else out.left = out.left + 1 end
-                end
-            end
-        end)
+    local T = {rail = {"straight-rail", "curved-rail-a", "curved-rail-b", "half-diagonal-rail", "rail-ramp", "rail-support"},
+               signal = {"rail-signal", "rail-chain-signal"}, stop = {"train-stop"},
+               stock = {"locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon"}}
+    local types = {}
+    for k in string.gmatch(kinds_csv ~= "" and kinds_csv or "rail,signal", "([^,]+)") do
+        for _, t in ipairs(T[k] or {}) do types[#types + 1] = t end
     end
-    return hexout("RAILHEX_", out)
+    local found = {}
+    for _, e in pairs(surface.find_entities_filtered{position = {tonumber(x), tonumber(y)}, radius = tonumber(area) or 0.5,
+                                                     type = types, force = player.force}) do
+        if e.valid and (name == "" or e.name == name) and (tonumber(d) < 0 or e.direction == tonumber(d)) then
+            found[#found + 1] = e
+        end
+    end
+    local list = {}
+    for i, e in ipairs(found) do
+        if i <= 30 then list[#list + 1] = {n = e.name, x = e.position.x, y = e.position.y, d = e.direction,
+                                           train = e.train and e.train.id or nil, stop = e.type == "train-stop" and e.backer_name or nil} end
+    end
+    local want = tonumber(count) or -1
+    if #found == 0 then return hexout("RAILHEX_", {removed = 0, found = 0, list = list, refused = "nothing matches"}) end
+    if (want < 0 and #found > 1) or (want >= 0 and want ~= #found) then
+        return hexout("RAILHEX_", {removed = 0, found = #found, list = list,
+                                   refused = "matched " .. #found .. " entities; pass count=" .. #found .. " to remove them all, or an exact position/name/direction"})
+    end
+    if tonumber(dry) == 1 then return hexout("RAILHEX_", {removed = 0, found = #found, list = list, dry_run = true}) end
+    -- rolling stock first, then stops and signals, then rails (a rail under a wagon cannot be mined)
+    local RANK = {locomotive = 1, ["cargo-wagon"] = 1, ["fluid-wagon"] = 1, ["artillery-wagon"] = 1, ["train-stop"] = 2,
+                  ["rail-signal"] = 2, ["rail-chain-signal"] = 2}
+    table.sort(found, function(a, b) return (RANK[a.type] or 3) < (RANK[b.type] or 3) end)
+    local n, left = 0, 0
+    for _, e in ipairs(found) do
+        if e.valid then
+            if e.train then e.train.manual_mode = true end
+            if player.mine_entity(e, true) then n = n + 1 else left = left + 1 end
+        end
+    end
+    return hexout("RAILHEX_", {removed = n, left = left, found = #found, list = list})
 end
 
 -- a whole consist: spec "1-2" (locos-wagons) or "1-2-1"; the first loco at (x, y) facing d

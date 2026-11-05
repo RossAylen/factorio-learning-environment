@@ -27,7 +27,8 @@ class Rails(Tool):
           group="Iron", auto=True)   (WaitCondition tables verbatim; compare_type defaults to "and")
     rails("stop_config", x=, y=, limit=1 (-1 none, 0 closed), priority=50, enable=True) -> stop info
     rails("signal", x=, y=, d=travel_dir, chain=False) -> {x, y, dir, rails}  (at a straight rail END)
-    rails("remove", x=, y=, radius=20) -> counts (rail entities back into the inventory)
+    rails("remove", x=, y=, kind="rail,signal" (add "stop"/"stock" explicitly), name=, d_filter=, area=0.5, count=None, dry_run=True)
+        -> {removed, found, list, refused?}: an exact piece by default; >1 match needs count= equal to it; dry_run=True only lists
     rails("refuel", x=, y=, radius=60, train_id=0, fuel="coal", fuel_count=50) -> {fueled, far, short}: locos within 10 tiles topped up to fuel_count
     rails("consist", x=, y=, d=, spec="1-2", fuel="coal", fuel_count=50) -> {train, carriages, made[fuel]} (fuel_count = total, split evenly over the locos)
     """
@@ -39,7 +40,8 @@ class Rails(Tool):
                  name: str = "", d: int = 0, fuel: str = "", fuel_count: int = 0, records: Optional[List[Dict]] = None,
                  auto: bool = True, reach: float = 10, limit: Optional[int] = None, priority: Optional[int] = None,
                  enable: Optional[bool] = None, interrupts: Optional[List[Dict]] = None, group: str = "",
-                 chain: bool = False, spec: str = "1-1", train_id: Optional[int] = 0) -> Any:
+                 chain: bool = False, spec: str = "1-1", train_id: Optional[int] = 0, kind: Any = "rail,signal",
+                 area: float = 0.5, count: Optional[int] = None, dry_run: bool = True, d_filter: Optional[int] = None) -> Any:
         if train_id is None:
             raise ValueError("rails: train_id=None - no train id (did rails('read') find the train? its 'trains' list was empty)")
         if op == "place":
@@ -76,7 +78,8 @@ class Rails(Tool):
             r, _ = self.execute(self.player_index, "rail_signal", x, y, d, 1 if chain else 0)
             return r
         elif op == "remove":
-            r, _ = self.execute(self.player_index, "rail_remove", x, y, radius)
+            r, _ = self.execute(self.player_index, "rail_remove", x, y, float(area), ",".join(kind) if isinstance(kind, (list, tuple)) else (kind or ""),
+                                name or "", -1 if d_filter is None else int(d_filter), -1 if count is None else int(count), 1 if dry_run else 0)
         elif op == "refuel":
             r, _ = self.execute(self.player_index, "rail_refuel", x, y, radius, int(train_id or 0), fuel or "coal", int(fuel_count or 50))
         elif op == "consist":
