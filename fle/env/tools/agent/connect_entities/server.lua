@@ -1894,6 +1894,29 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
         return true
     end
 
+    -- an entrance/exit placed within reach of a FOREIGN underground of the same kind on the same
+    -- axis (e.g. inside another line's underground span) steals or joins its pairing and mixes
+    -- the two lines: keep every new underground piece clear of them (both ways along the axis)
+    local ug_ok_cache = {}
+    local function ug_tile_ok(x, y, d)
+        local axis = UG_DIRS[d][3] % 8
+        local ck = x .. "," .. y .. "," .. axis
+        local v = ug_ok_cache[ck]
+        if v ~= nil then return v end
+        v = true
+        local dx, dy = UG_DIRS[d][1], UG_DIRS[d][2]
+        for i = 1, maxd + 1 do
+            for _, sgn in ipairs({1, -1}) do
+                for _, e in pairs(surface.find_entities_filtered{position = {x + sgn * dx * i, y + sgn * dy * i}, name = ug}) do
+                    if (e.direction % 8) == axis then v = false end
+                end
+            end
+            if not v then break end
+        end
+        ug_ok_cache[ck] = v
+        return v
+    end
+
     local function jump_cost(k2)
         if is_pipe then return 2 + 0.3 * k2 end
         return 2 + k2   -- an underground hop costs about what its tiles would: preferred over detours
@@ -2000,7 +2023,7 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
                         local ex, ey = x + dx * k2, y + dy * k2
                         if not in_box(ex, ey) then break end
                         if not (ex == tx and ey == ty) and not (ex == sx and ey == sy) and tile_free(ex, ey) ~= false
-                           and span_clear(x, y, a, k2) then
+                           and span_clear(x, y, a, k2) and (is_pipe or (ug_tile_ok(x, y, a) and ug_tile_ok(ex, ey, a))) then
                             relax(cur, ex, ey, a, 1, jump_cost(k2) + clear_cost(ex, ey), 'jump')
                         end
                     end
