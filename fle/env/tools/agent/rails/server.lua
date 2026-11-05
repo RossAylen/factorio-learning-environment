@@ -418,6 +418,42 @@ storage.actions.rail_consist = function(player_index, x, y, d, spec, fuel_name, 
     return hexout("RAILHEX_", {train = t and t.id or tid, carriages = t and #t.carriages or #made, made = made})
 end
 
+-- refuel: every locomotive of the trains within radius of (x, y) (or train id) gets fuel from the
+-- character up to `target`; locos out of reach (10 tiles) are listed with their position
+storage.actions.rail_refuel = function(player_index, x, y, radius, train_id, fuel_name, target)
+    local player = storage.agent_characters[player_index]
+    target = tonumber(target) or 50
+    train_id = tonumber(train_id) or 0
+    local out = {fueled = {}, far = {}, short = false}
+    local seen = {}
+    for _, lo in pairs(player.surface.find_entities_filtered{position = {tonumber(x), tonumber(y)}, radius = tonumber(radius) or 60,
+                                                             type = "locomotive", force = player.force}) do
+        local t = lo.train
+        if t and (train_id == 0 or t.id == train_id) and not seen[lo.unit_number] then
+            seen[lo.unit_number] = true
+            local inv = lo.get_fuel_inventory()
+            local have = inv.get_item_count()
+            local want = target - have
+            local d = math.sqrt((lo.position.x - player.position.x) ^ 2 + (lo.position.y - player.position.y) ^ 2)
+            if want > 0 then
+                if d > 10 then
+                    out.far[#out.far + 1] = {train = t.id, x = lo.position.x, y = lo.position.y, fuel = have}
+                else
+                    local n = math.min(want, player.get_item_count(fuel_name))
+                    local got = 0
+                    if n > 0 then
+                        got = inv.insert{name = fuel_name, count = n}
+                        if got > 0 then player.remove_item{name = fuel_name, count = got} end
+                    end
+                    if got < want then out.short = true end
+                    out.fueled[#out.fueled + 1] = {train = t.id, x = lo.position.x, y = lo.position.y, added = got, fuel = have + got}
+                end
+            end
+        end
+    end
+    return hexout("RAILHEX_", out)
+end
+
 -- the tool entry point: rails(op, ...)
 storage.actions.rails = function(player_index, op, ...)
     local f = storage.actions[op]

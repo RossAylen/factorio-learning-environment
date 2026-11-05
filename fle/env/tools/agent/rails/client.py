@@ -28,6 +28,7 @@ class Rails(Tool):
     rails("stop_config", x=, y=, limit=1 (-1 none, 0 closed), priority=50, enable=True) -> stop info
     rails("signal", x=, y=, d=travel_dir, chain=False) -> {x, y, dir, rails}  (at a straight rail END)
     rails("remove", x=, y=, radius=20) -> counts (rail entities back into the inventory)
+    rails("refuel", x=, y=, radius=60, train_id=0, fuel="coal", fuel_count=50) -> {fueled, far, short}: locos within 10 tiles topped up to fuel_count
     rails("consist", x=, y=, d=, spec="1-2", fuel="coal", fuel_count=50) -> {train, carriages, made[fuel]} (fuel_count = total, split evenly over the locos)
     """
 
@@ -76,6 +77,8 @@ class Rails(Tool):
             return r
         elif op == "remove":
             r, _ = self.execute(self.player_index, "rail_remove", x, y, radius)
+        elif op == "refuel":
+            r, _ = self.execute(self.player_index, "rail_refuel", x, y, radius, int(train_id or 0), fuel or "coal", int(fuel_count or 50))
         elif op == "consist":
             r, _ = self.execute(self.player_index, "rail_consist", x, y, d, spec, fuel, fuel_count)
         else:
