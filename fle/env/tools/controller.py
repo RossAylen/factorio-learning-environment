@@ -34,6 +34,9 @@ _RESPONSE_WRAPPER = (
 )
 
 
+_PLAIN_STR = re.compile(r'\s*\{\s*\["a"\]\s*=\s*(true|false)\s*,\s*\["b"\]\s*=\s*"([^"\\]*)"\s*,?\s*\}\s*$', re.S)
+
+
 def _decode_response(response: str) -> str:
     """Decode sentinel-marked compressed lines; pass everything else through."""
     if not response or _SENTINEL not in response:
@@ -232,6 +235,11 @@ class Controller:
         if self._check_for_processing_error(lua_response):
             raise RconProcessingError("Game engine busy (processing), try again")
 
+        # fast path: a plain string result ({["a"] = true, ["b"] = "XXHEX_..."}): the generic Lua
+        # parser took 0.4-2 s per call on the hex payloads every lean tool returns
+        m = _PLAIN_STR.match(lua_response or "")
+        if m:
+            return {"a": m.group(1) == "true", "b": m.group(2)}, lua_response
         try:
             possible_json = lua_response.split('["b"] = ')[
                 1
