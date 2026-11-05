@@ -34,6 +34,19 @@ _RESPONSE_WRAPPER = (
 )
 
 
+# Transaction tracking (play_lib _transactional): while TXN["rect"] is set, every mutating tool call is
+# bracketed IN THE SAME RCON COMMAND by a scan of that rect, so the entities it created are known
+# exactly (another agent's commands cannot interleave inside one command) -> a rollback removes only
+# what THIS character placed. Units accumulate in storage.txn_units[pi] (bots op "txn").
+TXN = {"rect": None, "pi": None}
+_TXN_SKIP = {"bots", "flow_read", "kpi_read", "trace_items", "vitals", "score", "sleep", "inspect_inventory",
+             "get_entities", "get_entity", "nearest", "nearest_buildable", "can_place_entity", "get_prototype_recipe",
+             "print", "inspect_entities", "get_resource_patch", "get_connection_amount", "alarm"}
+
+_TXN_TYPES_LUA = ("{'transport-belt','underground-belt','splitter','inserter','container','logistic-container',"
+                  "'electric-pole','entity-ghost','pipe','pipe-to-ground','loader','loader-1x1','lamp',"
+                  "'assembling-machine','furnace','mining-drill','ammo-turret','wall','gate'}")
+
 _PLAIN_STR = re.compile(r'\s*\{\s*\["a"\]\s*=\s*(true|false)\s*,\s*\["b"\]\s*=\s*"?([A-Z][A-Z0-9]*HEX_[0-9a-f]*)"?\s*,?\s*\}\s*$', re.S)
 
 
@@ -217,6 +230,18 @@ class Controller:
         # lua time waited behind another call; a big lua time is the call that stalled the server
         wrapped = (f"{COMMAND} local _pf = helpers.create_profiler(); a, b = {invocation}; _pf.stop(); "
                    f"rcon.print({{'', '__LUAMS__', _pf}}); {_RESPONSE_WRAPPER}")
+        if TXN["rect"] and self.name not in _TXN_SKIP:
+            x0, y0, x1, y1 = (float(v) for v in TXN["rect"])
+            pi = int(TXN["pi"] or 1)
+            # self-contained (no functions kept in storage: they do not survive a save/load)
+            scan = (f"game.surfaces[1].find_entities_filtered{{area = {{{{{x0},{y0}}},{{{x1},{y1}}}}}, "
+                    f"type = {_TXN_TYPES_LUA}, force = 'player'}}")
+            wrapped = (f"{COMMAND} local _tp = {{}}; for _, e in pairs({scan}) do if e.unit_number then _tp[e.unit_number] = true end end; "
+                       f"local _pf = helpers.create_profiler(); a, b = {invocation}; _pf.stop(); "
+                       f"storage.txn_units = storage.txn_units or {{}}; local _tt = storage.txn_units[{pi}] or {{}}; "
+                       f"for _, e in pairs({scan}) do if e.unit_number and not _tp[e.unit_number] then _tt[#_tt + 1] = e.unit_number end end; "
+                       f"storage.txn_units[{pi}] = _tt; "
+                       f"rcon.print({{'', '__LUAMS__', _pf}}); {_RESPONSE_WRAPPER}")
         lua_response = _decode_response(
             self.connection.rcon_client.send_command(wrapped)
         )

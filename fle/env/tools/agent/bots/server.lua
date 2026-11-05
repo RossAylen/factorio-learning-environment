@@ -6,6 +6,18 @@ local function b_out(t)
 end
 local B = {}
 
+-- transaction tracking: controller.TXN brackets each tool call with a scan and appends new units
+-- to storage.txn_units[pi]
+-- spec.pi, spec.clear: the units this agent created during the current transaction (still alive)
+B.txn = function(player, spec)
+    storage.txn_units = storage.txn_units or {}
+    local t = storage.txn_units[spec.pi] or {}
+    local alive = {}
+    for _, u in ipairs(t) do alive[#alive + 1] = u end   -- the caller intersects with an area scan
+    if spec.clear then storage.txn_units[spec.pi] = nil end
+    return {units = alive, n = #t}
+end
+
 -- ghost a blueprint (export string) at position: the game places every ghost with recipes,
 -- wires and control settings, exactly as a player pasting it
 B.ghost_bp = function(player, spec)
