@@ -20,7 +20,35 @@ storage.actions.can_build = function(player_index, ents_hex, limit)
             local d = tonumber(e.d) or 0
             local fits = surface.can_place_entity{name = e.name, position = {e.x, e.y}, direction = d, force = force,
                 build_check_type = defines.build_check_type.manual}
+            -- can_place_entity says yes to a fast-replace (a belt over an underground belt, an
+            -- inserter over another inserter) - but the build creates entities, it never replaces:
+            -- anything solid already in the footprint blocks, unless it is this very entity
+            local replace = nil
             if fits then
+                local cb0 = proto.collision_box
+                local w0, h0 = cb0.right_bottom.x - cb0.left_top.x, cb0.right_bottom.y - cb0.left_top.y
+                if d == 4 or d == 12 then w0, h0 = h0, w0 end
+                for _, b in pairs(surface.find_entities_filtered{area = {{e.x - w0 / 2 + 0.05, e.y - h0 / 2 + 0.05},
+                        {e.x + w0 / 2 - 0.05, e.y + h0 / 2 - 0.05}}}) do
+                    if b.valid and not IGNORE[b.type] and b.type ~= "tree" and b.type ~= "simple-entity" then
+                        local same_pos = math.abs(b.position.x - e.x) < 0.1 and math.abs(b.position.y - e.y) < 0.1
+                        local same_dir = (not b.supports_direction) or b.direction == d
+                        if not (b.name == e.name and same_pos and same_dir) then
+                            replace = {name = b.name, x = b.position.x, y = b.position.y, own = (b.force == force) or nil}
+                            if b.name == e.name and same_pos then replace.why = "same entity, direction " .. b.direction .. " not " .. d end
+                            break
+                        end
+                    end
+                end
+            end
+            if fits and replace then
+                out.n_blocked = out.n_blocked + 1
+                out.blockers[replace.name] = (out.blockers[replace.name] or 0) + 1
+                if #out.blocked < limit then
+                    table.insert(out.blocked, {i = i, name = e.name, x = e.x, y = e.y, by = {replace},
+                                               why = replace.why or ("would replace " .. replace.name)})
+                end
+            elseif fits then
                 out.ok = out.ok + 1
             else
                 local cb = proto.collision_box
