@@ -114,6 +114,27 @@ B.belt_purge = function(player, spec)
     return {taken = taken, left = left}
 end
 
+-- inserters taking from the given belt tiles: spec.tiles = [[x, y], ...] -> [{x, y, n, px, py, drop = {n, x, y}}]
+B.taps = function(player, spec)
+    local want, out, seen = {}, {}, {}
+    local x0, y0, x1, y1 = 1e9, 1e9, -1e9, -1e9
+    for _, t in ipairs(spec.tiles or {}) do
+        want[math.floor(t[1]) .. "," .. math.floor(t[2])] = true
+        x0, y0, x1, y1 = math.min(x0, t[1]), math.min(y0, t[2]), math.max(x1, t[1]), math.max(y1, t[2])
+    end
+    if x0 > x1 then return {taps = out} end
+    for _, i in pairs(player.surface.find_entities_filtered{area = {{x0 - 3, y0 - 3}, {x1 + 3, y1 + 3}}, type = "inserter", force = player.force}) do
+        local pp = i.pickup_position
+        if pp and want[math.floor(pp.x) .. "," .. math.floor(pp.y)] and not seen[i.unit_number] then
+            seen[i.unit_number] = true
+            local dt = i.drop_target
+            out[#out + 1] = {x = i.position.x, y = i.position.y, n = i.name, px = pp.x, py = pp.y,
+                             drop = dt and {n = dt.name, x = dt.position.x, y = dt.position.y} or nil}
+        end
+    end
+    return {taps = out}
+end
+
 -- single ghosts: [{n, x, y, d, recipe?, type?}]
 B.ghost = function(player, spec)
     local n = 0
