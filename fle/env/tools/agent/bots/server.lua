@@ -241,6 +241,21 @@ B.span_hits = function(player, spec)
     return {hits = hits}
 end
 
+-- enemy turrets (worms) and spawners near a point with their real attack range: [{n, x, y, k, range}]
+B.enemy_reach = function(player, spec)
+    local out = {}
+    for _, e in pairs(player.surface.find_entities_filtered{position = {spec.x, spec.y}, radius = spec.r or 40,
+            force = "enemy", type = {"turret", "unit-spawner", "unit"}}) do
+        local range = 0
+        pcall(function()
+            local ap = e.prototype.attack_parameters
+            if ap and ap.range then range = ap.range end
+        end)
+        out[#out + 1] = {n = e.name, x = e.position.x, y = e.position.y, k = e.type, range = range}
+    end
+    return {e = out}
+end
+
 -- single ghosts: [{n, x, y, d, recipe?, type?}]
 B.ghost = function(player, spec)
     local n = 0
