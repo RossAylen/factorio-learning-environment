@@ -17,6 +17,95 @@ local function serialize_position(pos)
     }
 end
 
+
+-- extras the per-entity state does not carry (rail state and circuits): train stops (name, limit,
+-- priority), rolling stock (train, place in the consist, orientation, fuel, cargo, fluid; schedule,
+-- interrupts, group and mode on the front carriage), circuit/copper wires and control behaviour.
+-- Returned as one pseudo-entity {name = "__extras__", data = {[unit] = {...}}}.
+local SES_ROLL = {locomotive = true, ["cargo-wagon"] = true, ["fluid-wagon"] = true, ["artillery-wagon"] = true}
+local SES_CB_FIELDS = {"circuit_enable_disable", "circuit_condition", "connect_to_logistic_network", "logistic_condition",
+    "read_contents", "read_contents_mode", "set_trains_limit", "trains_limit_signal", "send_to_train", "read_from_train",
+    "read_stopped_train", "stopped_train_signal", "read_trains_count", "trains_count_signal", "enable_disable",
+    "circuit_read_hand_contents", "circuit_hand_read_mode", "circuit_set_stack_size", "stack_control_input_signal",
+    "read_charge", "output_signal", "circuit_set_filters", "use_colors", "red_output_signal", "orange_output_signal",
+    "green_output_signal", "close_signal", "read_signal", "resource_read_mode", "circuit_read_resources"}
+local function ses_contents(inv)
+    if not inv then return nil end
+    local out = {}
+    for _, it in pairs(inv.get_contents()) do out[#out + 1] = {name = it.name, count = it.count, quality = it.quality} end
+    return #out > 0 and out or nil
+end
+local function ses_extras(entities)
+    local ex = {}
+    for _, e in pairs(entities) do
+        if e.valid and e.unit_number and e.type ~= "character" then
+            local r = {}
+            local t = e.type
+            if t == "train-stop" then
+                local lim = e.trains_limit
+                if lim and lim >= 4294967295 then lim = nil end
+                r.stop = {name = e.backer_name, limit = lim, prio = e.train_stop_priority}
+            end
+            if SES_ROLL[t] and e.train then
+                local tr = e.train
+                local idx = 0
+                for i, c in ipairs(tr.carriages) do if c == e then idx = i end end
+                local ro = {train = tr.id, idx = idx, n = #tr.carriages, o = e.orientation, name = e.name,
+                            x = e.position.x, y = e.position.y}
+                pcall(function() ro.fuel = ses_contents(e.get_fuel_inventory()) end)
+                if t == "cargo-wagon" then pcall(function() ro.cargo = ses_contents(e.get_inventory(defines.inventory.cargo_wagon)) end) end
+                pcall(function() ro.fluid = e.get_fluid_contents() end)
+                if idx == 1 then
+                    pcall(function()
+                        local sch = tr.get_schedule()
+                        ro.records = sch.get_records()
+                        ro.interrupts = sch.get_interrupts()
+                        ro.current = sch.current
+                    end)
+                    ro.group = tr.group
+                    ro.manual = tr.manual_mode
+                end
+                r.roll = ro
+            end
+            local ok, cons = pcall(function() return e.get_wire_connectors(false) end)
+            if ok and cons then
+                for cid, conn in pairs(cons) do
+                    for _, w in pairs(conn.connections) do
+                        local o = w.target.owner
+                        if o and o.valid and o.unit_number then
+                            r.w = r.w or {}
+                            r.w[#r.w + 1] = {c = cid, u = o.unit_number, tc = w.target.wire_connector_id}
+                        end
+                    end
+                end
+            end
+            local cb = nil
+            pcall(function() cb = e.get_control_behavior() end)
+            if cb then
+                local c = {}
+                if t == "arithmetic-combinator" or t == "decider-combinator" or t == "selector-combinator" then
+                    pcall(function() c.parameters = cb.parameters end)
+                elseif t == "constant-combinator" then
+                    pcall(function()
+                        c.enabled = cb.enabled
+                        c.sections = {}
+                        for i = 1, cb.sections_count do
+                            local sec = cb.get_section(i)
+                            c.sections[#c.sections + 1] = {filters = sec.filters, active = sec.active}
+                        end
+                    end)
+                end
+                for _, f in ipairs(SES_CB_FIELDS) do
+                    pcall(function() local v = cb[f] if v ~= nil then c.f = c.f or {} c.f[f] = v end end)
+                end
+                if next(c) then r.cb = c end
+            end
+            if next(r) then ex[tostring(e.unit_number)] = r end
+        end
+    end
+    return ex
+end
+
 -- Main serialization function
 storage.actions.save_entity_state = function(player_index, distance, player_entities, resource_entities, items_on_ground, only)
     local surface = storage.agent_characters[player_index].surface
@@ -367,6 +456,13 @@ storage.actions.save_entity_state = function(player_index, distance, player_enti
             end
             table.insert(entity_array, state)
         end
+    end
+    local okx, ex = pcall(ses_extras, entities)
+    if okx and ex and next(ex) then
+        -- hex JSON: the generic Lua->Python parser mangles strings with spaces ('Iron Load') and lists
+        local j = helpers.table_to_json(ex)
+        table.insert(entity_array, {name = '"__extras__"', type = '"__extras__"',
+                                    data = "EXHEX_" .. (j:gsub(".", function(ch) return string.format("%02x", ch:byte()) end))})
     end
     return entity_array
 end

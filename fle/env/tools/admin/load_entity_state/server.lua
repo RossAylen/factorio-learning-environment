@@ -4,6 +4,107 @@ local function unquote_string(str)
     return string.gsub(str, '"', '')
 end
 
+local LES_ROLL = {locomotive = true, ["cargo-wagon"] = true, ["fluid-wagon"] = true, ["artillery-wagon"] = true}
+
+-- rail state and circuits (see save_entity_state's ses_extras)
+local function les_apply_extras(surface, parts, created)
+    local ex = {}
+    for _, p in ipairs(parts) do for k, v in pairs(p) do ex[tostring(k)] = v end end
+    local new_of = {}
+    for k, v in pairs(created) do new_of[tostring(k)] = v.entity end
+    local report = {stops = 0, carriages = 0, trains = 0, wires = 0, cb = 0, failed = {}}
+    -- 1. train stops
+    for k, r in pairs(ex) do
+        local e = new_of[k]
+        if r.stop and e and e.valid then
+            pcall(function() e.backer_name = r.stop.name end)
+            pcall(function() if r.stop.limit then e.trains_limit = r.stop.limit end end)
+            pcall(function() if r.stop.prio then e.train_stop_priority = r.stop.prio end end)
+            report.stops = report.stops + 1
+        end
+    end
+    -- 2. rolling stock: per train, front to back, so the consist couples again
+    local trains = {}
+    for k, r in pairs(ex) do
+        if r.roll then
+            local id = tostring(r.roll.train)
+            trains[id] = trains[id] or {}
+            table.insert(trains[id], {k = k, r = r.roll})
+        end
+    end
+    local function put(inv, list)
+        if inv and list then for _, it in ipairs(list) do pcall(function() inv.insert{name = it.name, count = it.count, quality = it.quality} end) end end
+    end
+    for _, cars in pairs(trains) do
+        table.sort(cars, function(a, b) return a.r.idx < b.r.idx end)
+        local last = nil
+        for _, c in ipairs(cars) do
+            local ro = c.r
+            local d = math.floor((tonumber(ro.o) or 0) * 16 + 0.5) % 16
+            local e = surface.create_entity{name = ro.name, position = {ro.x, ro.y}, direction = d, force = game.forces.player, raise_built = true}
+            if e then
+                new_of[c.k] = e
+                last = e
+                report.carriages = report.carriages + 1
+                pcall(function() put(e.get_fuel_inventory(), ro.fuel) end)
+                if e.type == "cargo-wagon" then pcall(function() put(e.get_inventory(defines.inventory.cargo_wagon), ro.cargo) end) end
+                pcall(function() for fname, amt in pairs(ro.fluid or {}) do e.insert_fluid{name = fname, amount = amt} end end)
+            else
+                report.failed[#report.failed + 1] = ro.name .. "@" .. ro.x .. "," .. ro.y
+            end
+        end
+        local front = cars[1] and cars[1].r
+        if last and last.valid and last.train and front then
+            local tr = last.train
+            pcall(function()
+                local sch = tr.get_schedule()
+                if front.records then sch.set_records(front.records) end
+                if front.interrupts then sch.set_interrupts(front.interrupts) end
+                if front.current and front.current > 0 then sch.go_to_station(front.current) end
+            end)
+            pcall(function() if front.group and front.group ~= "" then tr.group = front.group end end)
+            pcall(function() tr.manual_mode = front.manual and true or false end)
+            report.trains = report.trains + 1
+        end
+    end
+    -- 3. wires and 4. control behaviour (needs every entity, rolling stock included)
+    for k, r in pairs(ex) do
+        local e = new_of[k]
+        if e and e.valid then
+            for _, w in ipairs(r.w or {}) do
+                local o = new_of[tostring(w.u)]
+                if o and o.valid then
+                    pcall(function()
+                        if e.get_wire_connector(w.c, true).connect_to(o.get_wire_connector(w.tc, true), false) then
+                            report.wires = report.wires + 1
+                        end
+                    end)
+                end
+            end
+            if r.cb then
+                pcall(function()
+                    local cb = e.get_or_create_control_behavior()
+                    if r.cb.parameters then cb.parameters = r.cb.parameters end
+                    if r.cb.sections then
+                        for i, sec in ipairs(r.cb.sections) do
+                            local s_ = cb.get_section(i) or cb.add_section()
+                            if s_ then
+                                pcall(function() s_.filters = sec.filters end)
+                                pcall(function() if sec.active ~= nil then s_.active = sec.active end end)
+                            end
+                        end
+                    end
+                    if r.cb.enabled ~= nil then pcall(function() cb.enabled = r.cb.enabled end) end
+                    for f, v in pairs(r.cb.f or {}) do pcall(function() cb[f] = v end) end
+                    report.cb = report.cb + 1
+                end)
+            end
+        end
+    end
+    storage.last_load_extras = report
+    return report
+end
+
 -- Main deserialization function
 storage.actions.load_entity_state = function(player, stored_json_data)
     local player_entity = storage.agent_characters[player]
@@ -11,6 +112,7 @@ storage.actions.load_entity_state = function(player, stored_json_data)
     local created_entities = {}
     local stored_data = helpers.json_to_table(stored_json_data)
     local character_states = {}
+    local extras_parts = {}
     -- First pass: Create all non-character entities and store character states
     for _, state in pairs(stored_data) do
         local name = unquote_string(state.name)
@@ -37,6 +139,15 @@ storage.actions.load_entity_state = function(player, stored_json_data)
             else
                 -- game.print("Warning: Unknown item type " .. item_name)
             end
+        elseif name == "__extras__" then
+            local d = state.data
+            if type(d) == "string" and string.sub(d, 1, 6) == "EXHEX_" then
+                local h = string.sub(d, 7)
+                d = helpers.json_to_table((h:gsub("%x%x", function(c) return string.char(tonumber(c, 16)) end)))
+            end
+            if type(d) == "table" then extras_parts[#extras_parts + 1] = d end
+        elseif LES_ROLL[unquote_string(state.type or "")] then
+            -- rolling stock is placed after the rails, from the extras (orientation + consist order)
         elseif state.type == "simple-entity-with-owner" then
             -- Do nothing, we don't want to load in placeholder entities if they were somehow persisted!
         else
@@ -285,5 +396,6 @@ storage.actions.load_entity_state = function(player, stored_json_data)
         end
     end
 
+    if #extras_parts > 0 then pcall(les_apply_extras, surface, extras_parts, created_entities) end
     return true
 end
