@@ -257,6 +257,20 @@ B.enemy_reach = function(player, spec)
     return {e = out}
 end
 
+-- undo: pick up our entities by unit number into the character (a failed build's own pieces)
+B.undo = function(player, spec)
+    local want = {}
+    for _, u in ipairs(spec.units or {}) do want[tonumber(u)] = true end
+    local n, failed = 0, 0
+    for _, e in pairs(player.surface.find_entities_filtered{area = {{spec.x0, spec.y0}, {spec.x1, spec.y1}}, force = player.force}) do
+        if e.valid and e.unit_number and want[e.unit_number] then
+            local ok = pcall(function() return player.mine_entity(e, true) end)
+            if ok and not e.valid then n = n + 1 else failed = failed + 1 end
+        end
+    end
+    return {removed = n, failed = failed}
+end
+
 -- single ghosts: [{n, x, y, d, recipe?, type?}]
 B.ghost = function(player, spec)
     local n = 0
