@@ -1862,20 +1862,31 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
     local feed_cache = {}
     local function belt_penalty(x, y)
         if is_pipe then return 0 end
-        if math.max(math.abs(x - sx), math.abs(y - sy)) <= 1 or math.max(math.abs(x - tx), math.abs(y - ty)) <= 1 then
-            return 0
-        end
+        -- only the exact start/goal tiles may be fed (the source's own belt feeds the start)
         local k = key(x, y)
+        if k == skey or k == tkey then return 0 end
         local v = feed_cache[k]
         if v ~= nil then return v end
         v = 0
         for _, e in pairs(surface.find_entities_filtered{area = {{x - 1.5, y - 1.5}, {x + 1.5, y + 1.5}},
-                                                         type = {"transport-belt", "underground-belt"}}) do
+                                                         type = {"transport-belt", "underground-belt", "splitter"}}) do
             local dv = DIRV[e.direction]
-            local outputs = e.type == "transport-belt" or e.belt_to_ground_type == "output"
-            if dv and outputs and math.abs(e.position.x + dv[1] - x) < 0.1 and math.abs(e.position.y + dv[2] - y) < 0.1 then
-                v = 1000   -- effectively forbidden: it would merge two lines
-                break
+            local outputs = e.type == "transport-belt" or e.type == "splitter" or e.belt_to_ground_type == "output"
+            if dv and outputs then
+                local hit = false
+                if e.type == "splitter" then
+                    -- two output tiles, half a tile either side of the centre across the flow
+                    for _, sg in ipairs({-0.5, 0.5}) do
+                        local ox, oy = e.position.x - dv[2] * sg + dv[1], e.position.y + dv[1] * sg + dv[2]
+                        if math.abs(ox - x) < 0.1 and math.abs(oy - y) < 0.1 then hit = true end
+                    end
+                else
+                    hit = math.abs(e.position.x + dv[1] - x) < 0.1 and math.abs(e.position.y + dv[2] - y) < 0.1
+                end
+                if hit then
+                    v = 1000   -- effectively forbidden: it would merge two lines
+                    break
+                end
             end
         end
         feed_cache[k] = v
