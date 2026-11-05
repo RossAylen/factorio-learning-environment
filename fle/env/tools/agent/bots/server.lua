@@ -241,6 +241,60 @@ B.power_model = function(player, spec)
     return {poles = poles, cons = cons}
 end
 
+-- dump: move the character's main inventory (all but keep-listed items) into a chest within 10:
+-- an existing chest of ours with room, else a new iron chest placed from the inventory
+B.dump = function(player, spec)
+    local s = player.surface
+    local keep = {}
+    for _, k in ipairs(spec.keep or {}) do keep[k] = true end
+    local inv = player.get_main_inventory()
+    local chest = nil
+    if spec.x then
+        chest = s.find_entities_filtered{position = {spec.x, spec.y}, radius = 0.6, type = "container", force = player.force}[1]
+    end
+    if not chest then
+        for _, c in pairs(s.find_entities_filtered{position = player.position, radius = 10, type = "container", force = player.force}) do
+            local ci = c.get_inventory(defines.inventory.chest)
+            if ci and ci.count_empty_stacks() >= 8 then chest = c break end
+        end
+    end
+    if not chest then
+        if inv.get_item_count("iron-chest") < 1 then error('"bots dump: no chest with room within 10 and no iron-chest in the inventory"') end
+        local p = s.find_non_colliding_position("iron-chest", player.position, 8, 1, true)
+        if not p then error('"bots dump: no free tile for a chest"') end
+        chest = s.create_entity{name = "iron-chest", position = p, force = player.force, raise_built = true}
+        inv.remove{name = "iron-chest", count = 1}
+    end
+    local ci = chest.get_inventory(defines.inventory.chest)
+    local moved = 0
+    for _, it in pairs(inv.get_contents()) do
+        if not keep[it.name] then
+            local n = ci.insert{name = it.name, count = it.count, quality = it.quality}
+            if n > 0 then inv.remove{name = it.name, count = n, quality = it.quality} moved = moved + n end
+        end
+    end
+    return {chest = {chest.position.x, chest.position.y}, moved = moved, free = inv.count_empty_stacks()}
+end
+
+-- ug_pair: an underground belt pair from a (entrance) to b (exit), direction along a->b, from the inventory
+B.ug_pair = function(player, spec)
+    local s = player.surface
+    local name = spec.name or "underground-belt"
+    if player.get_item_count(name) < 2 then error('"bots ug_pair: need 2 ' .. name .. ' in the inventory"') end
+    local dx, dy = spec.bx - spec.ax, spec.by - spec.ay
+    local d = (math.abs(dx) >= math.abs(dy)) and (dx > 0 and defines.direction.east or defines.direction.west)
+              or (dy > 0 and defines.direction.south or defines.direction.north)
+    local a = s.create_entity{name = name, position = {spec.ax, spec.ay}, direction = d, type = "input", force = player.force, raise_built = true}
+    if not a then error('"bots ug_pair: cannot place the entrance"') end
+    local b = s.create_entity{name = name, position = {spec.bx, spec.by}, direction = d, type = "output", force = player.force, raise_built = true}
+    if not b then a.destroy() error('"bots ug_pair: cannot place the exit"') end
+    player.remove_item{name = name, count = 2}
+    local nb = nil
+    pcall(function() nb = storage.neighbours and storage.neighbours(a) or nil end)
+    return {a = {a.position.x, a.position.y, a.belt_to_ground_type}, b = {b.position.x, b.position.y, b.belt_to_ground_type},
+            paired = nb ~= nil and nb == b}
+end
+
 -- tree stumps (corpses, no item) in an area: removed - they block rail pieces
 B.stumps = function(player, spec)
     local n = 0
