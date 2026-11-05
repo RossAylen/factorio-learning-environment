@@ -183,6 +183,64 @@ B.naturals = function(player, spec)
     return {e = out}
 end
 
+-- underground belt pairs whose span crosses an area: [{ax, ay, bx, by, n}] (a = input/entrance)
+B.spans = function(player, spec)
+    local out, seen = {}, {}
+    local m = 11
+    for _, e in pairs(player.surface.find_entities_filtered{area = {{spec.x0 - m, spec.y0 - m}, {spec.x1 + m, spec.y1 + m}},
+            type = "underground-belt", force = player.force}) do
+        if e.valid and e.belt_to_ground_type == "input" and not seen[e.unit_number] then
+            local nb = storage.neighbours and storage.neighbours(e) or nil
+            if nb and nb.valid then
+                seen[e.unit_number] = true
+                local x0, x1 = math.min(e.position.x, nb.position.x), math.max(e.position.x, nb.position.x)
+                local y0, y1 = math.min(e.position.y, nb.position.y), math.max(e.position.y, nb.position.y)
+                if x1 >= spec.x0 and x0 <= spec.x1 and y1 >= spec.y0 and y0 <= spec.y1 then
+                    out[#out + 1] = {ax = e.position.x, ay = e.position.y, bx = nb.position.x, by = nb.position.y, n = e.name}
+                end
+            end
+        end
+    end
+    return {spans = out}
+end
+
+-- planned entities (spec.ents = [{name, x, y, d}]) whose footprint covers an underground span
+-- (the tiles strictly between a pair's entrance and exit): [{i, name, x, y, ax, ay, bx, by}]
+B.span_hits = function(player, spec)
+    local ents = spec.ents or {}
+    if #ents == 0 then return {hits = {}} end
+    local x0, y0, x1, y1 = 1e9, 1e9, -1e9, -1e9
+    for _, e in ipairs(ents) do
+        x0, y0, x1, y1 = math.min(x0, e.x), math.min(y0, e.y), math.max(x1, e.x), math.max(y1, e.y)
+    end
+    local spans = B.spans(player, {x0 = x0 - 3, y0 = y0 - 3, x1 = x1 + 3, y1 = y1 + 3}).spans
+    local hits = {}
+    for i, e in ipairs(ents) do
+        local pr = prototypes.entity[e.name]
+        if pr then
+            local cb = pr.collision_box
+            local w, h = cb.right_bottom.x - cb.left_top.x, cb.right_bottom.y - cb.left_top.y
+            local d = tonumber(e.d) or 0
+            if d == 4 or d == 12 then w, h = h, w end
+            local bx0, by0, bx1, by1 = e.x - w / 2, e.y - h / 2, e.x + w / 2, e.y + h / 2
+            for _, sp in ipairs(spans) do
+                -- tiles strictly between the two ends, along the pair's axis
+                local dx, dy = sp.bx - sp.ax, sp.by - sp.ay
+                local n = math.max(math.abs(dx), math.abs(dy))
+                local sx, sy = (dx ~= 0) and (dx / math.abs(dx)) or 0, (dy ~= 0) and (dy / math.abs(dy)) or 0
+                for k = 1, n - 1 do
+                    local tx, ty = sp.ax + sx * k, sp.ay + sy * k
+                    if tx > bx0 and tx < bx1 and ty > by0 and ty < by1 then
+                        hits[#hits + 1] = {i = i, name = e.name, x = e.x, y = e.y, ax = sp.ax, ay = sp.ay, bx = sp.bx, by = sp.by}
+                        break
+                    end
+                end
+            end
+        end
+    end
+    return {hits = hits}
+end
+
 -- single ghosts: [{n, x, y, d, recipe?, type?}]
 B.ghost = function(player, spec)
     local n = 0
