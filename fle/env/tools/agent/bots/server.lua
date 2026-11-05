@@ -117,7 +117,7 @@ B.belt_purge = function(player, spec)
                 -- spec.lane = 1 | 2: only that lane (splitters/undergrounds: lanes 1,3,.. / 2,4,..)
                 local lane_ok = (not spec.lane) or ((li - 1) % 2 + 1 == tonumber(spec.lane))
                 for _, it in pairs(lane_ok and line.get_contents() or {}) do
-                    if not keep[it.name] then
+                    if not keep[it.name] and (not spec.only or spec.only == it.name) then
                         local n = player.insert{name = it.name, count = it.count, quality = it.quality}
                         if n > 0 then
                             line.remove_item{name = it.name, count = n, quality = it.quality}
