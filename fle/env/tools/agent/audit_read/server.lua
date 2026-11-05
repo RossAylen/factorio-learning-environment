@@ -1,7 +1,20 @@
 -- audit_read: for every machine in an area, is each required input actually connected to a
 -- source that can deliver it? Read only.
 -- machines: assembling-machine (incl. chem plants, refineries), furnace, lab, ammo-turret, boiler
+-- shared cache: base_status() in every agent's pulse read the whole base every game-minute; one
+-- read per area per AR_TTL ticks serves all agents (a negative limit forces a fresh read)
+local AR_TTL = 1800
+local ar_compute
 storage.actions.audit_read = function(player_index, x0, y0, x1, y1, limit)
+    local lim = tonumber(limit) or 800
+    local key = math.floor(tonumber(x0)) .. "," .. math.floor(tonumber(y0)) .. "," .. math.floor(tonumber(x1)) .. "," .. math.floor(tonumber(y1)) .. "," .. math.abs(lim)
+    local c = storage.ar_cache
+    if lim > 0 and c and c.key == key and game.tick - c.tick < AR_TTL then return c.out end
+    local out = ar_compute(player_index, x0, y0, x1, y1, math.abs(lim))
+    storage.ar_cache = {key = key, tick = game.tick, out = out}
+    return out
+end
+ar_compute = function(player_index, x0, y0, x1, y1, limit)
     local player = storage.agent_characters[player_index]
     local surface = player.surface
     local force = player.force
