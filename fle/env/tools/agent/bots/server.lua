@@ -295,6 +295,48 @@ B.ug_pair = function(player, spec)
             paired = nb ~= nil and nb == b}
 end
 
+-- fluid systems in an area: per fluid system id, the fluids in it and the fluids its machine
+-- fluidboxes are filtered for; mixed = more than one
+B.fluid_mix = function(player, spec)
+    local s = player.surface
+    local sys = {}
+    local types = {"pipe", "pipe-to-ground", "pump", "storage-tank", "offshore-pump", "mining-drill", "assembling-machine",
+                   "furnace", "boiler", "generator", "fluid-turret", "infinity-pipe"}
+    for _, e in pairs(s.find_entities_filtered{area = {{spec.x0, spec.y0}, {spec.x1, spec.y1}}, force = player.force, type = types}) do
+        for i = 1, 10 do
+            local ok, id = pcall(function()
+                if e.get_fluid_segment_id then return e.get_fluid_segment_id(i) end
+                return e.fluidbox.get_fluid_system_id(i)
+            end)
+            if not ok then break end
+            if id then
+                local r = sys[id] or {fluids = {}, filters = {}, n = 0, x = e.position.x, y = e.position.y, names = {}}
+                sys[id] = r
+                r.n = r.n + 1
+                pcall(function()
+                    local f = e.get_fluid_segment_fluid and e.get_fluid_segment_fluid(i) or e.fluidbox[i]
+                    if f and f.name then r.fluids[f.name] = (r.fluids[f.name] or 0) + (f.amount or 0) end
+                end)
+                pcall(function()
+                    local fl = e.get_fluid_filter and e.get_fluid_filter(i) or e.fluidbox.get_filter(i)
+                    if fl and fl.name then r.filters[fl.name] = true end
+                end)
+                if #r.names < 4 then r.names[#r.names + 1] = e.name end
+            end
+        end
+    end
+    local out = {}
+    for id, r in pairs(sys) do
+        local kinds = {}
+        for k, _ in pairs(r.fluids) do kinds[k] = true end
+        for k, _ in pairs(r.filters) do kinds[k] = true end
+        local list = {}
+        for k, _ in pairs(kinds) do list[#list + 1] = k end
+        out[#out + 1] = {id = id, x = r.x, y = r.y, n = r.n, fluids = list, mixed = #list > 1, names = r.names}
+    end
+    return {systems = out}
+end
+
 -- tree stumps (corpses, no item) in an area: removed - they block rail pieces
 B.stumps = function(player, spec)
     local n = 0
