@@ -146,7 +146,7 @@ K.clean = function(player, spec)
     for _, m in ipairs(ms) do
         local s = ST[m.status] or "?"
         mstat[s] = (mstat[s] or 0) + 1
-        if want[s] then
+        if s ~= "working" and s ~= "normal" then
             local k = s .. "@" .. area_key(m.position.x, m.position.y, 32)
             mat[k] = (mat[k] or 0) + 1
         end
