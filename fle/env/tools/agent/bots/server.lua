@@ -135,6 +135,32 @@ B.taps = function(player, spec)
     return {taps = out}
 end
 
+-- follow a belt downstream from (x, y): [[x, y], ...] of the belt tiles items would ride (max tiles)
+B.follow = function(player, spec)
+    local surf = player.surface
+    local DV = {[0] = {0, -1}, [4] = {1, 0}, [8] = {0, 1}, [12] = {-1, 0}}
+    local out, seen = {}, {}
+    local x, y = spec.x, spec.y
+    for _ = 1, (spec.max or 400) do
+        local e = surf.find_entities_filtered{position = {x, y}, radius = 0.4, type = {"transport-belt", "underground-belt", "splitter"}}[1]
+        if not e then break end
+        local k = math.floor(e.position.x * 2) .. "," .. math.floor(e.position.y * 2)
+        if seen[k] then break end
+        seen[k] = true
+        out[#out + 1] = {x, y}
+        local dv = DV[e.direction]
+        if not dv then break end
+        if e.type == "underground-belt" and e.belt_to_ground_type == "input" then
+            local nb = storage.neighbours and storage.neighbours(e) or nil
+            if nb and nb.valid then x, y = nb.position.x + dv[1], nb.position.y + dv[2]
+            else break end
+        else
+            x, y = x + dv[1], y + dv[2]
+        end
+    end
+    return {tiles = out}
+end
+
 -- single ghosts: [{n, x, y, d, recipe?, type?}]
 B.ghost = function(player, spec)
     local n = 0
