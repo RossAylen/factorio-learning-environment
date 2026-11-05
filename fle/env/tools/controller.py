@@ -1,3 +1,4 @@
+import re
 import base64
 import json
 import time
@@ -209,10 +210,23 @@ class Controller:
         start = time.time()
         parameters = [lua.encode(arg) for arg in args]
         invocation = f"pcall(storage.actions.{self.name}{(', ' if parameters else '') + ','.join(parameters)})"
-        wrapped = f"{COMMAND} a, b = {invocation}; {_RESPONSE_WRAPPER}"
+        # time the Lua side too (the call runs inside one game tick): a slow round trip with a small
+        # lua time waited behind another call; a big lua time is the call that stalled the server
+        wrapped = (f"{COMMAND} local _pf = helpers.create_profiler(); a, b = {invocation}; _pf.stop(); "
+                   f"rcon.print({{'', '__LUAMS__', _pf}}); {_RESPONSE_WRAPPER}")
         lua_response = _decode_response(
             self.connection.rcon_client.send_command(wrapped)
         )
+        self._last_lua_ms = None
+        if lua_response and "__LUAMS__" in lua_response:
+            keep = []
+            for line in lua_response.split("\n"):
+                if line.startswith("__LUAMS__"):
+                    m = re.search(r"([0-9.]+)\s*ms", line)
+                    self._last_lua_ms = float(m.group(1)) if m else None
+                else:
+                    keep.append(line)
+            lua_response = "\n".join(keep)
 
         # Check for [processing] error from RCON layer
         if self._check_for_processing_error(lua_response):
