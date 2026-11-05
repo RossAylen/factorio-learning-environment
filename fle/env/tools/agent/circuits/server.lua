@@ -4,13 +4,26 @@ local function c_out(t)
     local j = helpers.table_to_json(t)
     return "CIRCHEX_" .. (j:gsub(".", function(ch) return string.format("%02x", ch:byte()) end))
 end
+-- the entity at (x, y): exact position first, and among several (a chest beside a belt, a rail under
+-- a stop) one that has circuit connectors; rails/belts-without-wires are skipped when another fits
+local function c_has_wire(e)
+    local ok, c = pcall(function() return e.get_wire_connector(defines.wire_connector_id.circuit_red, true) end)
+    if ok and c then return true end
+    ok, c = pcall(function() return e.get_wire_connector(defines.wire_connector_id.combinator_input_red, true) end)
+    return ok and c ~= nil
+end
 local function c_find(surface, x, y, name)
-    local f = {position = {tonumber(x), tonumber(y)}, radius = 0.7}
+    local f = {position = {tonumber(x), tonumber(y)}, radius = 1.2}
     if name and name ~= "" then f.name = name end
+    local best, bs = nil, 1e9
     for _, e in pairs(surface.find_entities_filtered(f)) do
-        if e.valid and e.type ~= "character" and e.type ~= "resource" then return e end
+        if e.valid and e.type ~= "character" and e.type ~= "resource" and e.type ~= "entity-ghost" then
+            local d = math.abs(e.position.x - x) + math.abs(e.position.y - y)
+            local sc = d + (c_has_wire(e) and 0 or 100)
+            if sc < bs then best, bs = e, sc end
+        end
     end
-    return nil
+    return best
 end
 local CONN = {red = defines.wire_connector_id.circuit_red, green = defines.wire_connector_id.circuit_green}
 local CONN_C = {red_input = defines.wire_connector_id.combinator_input_red, green_input = defines.wire_connector_id.combinator_input_green,
@@ -32,6 +45,10 @@ C.wire = function(player, spec)
     local a, b = c_find(s, spec.a.x, spec.a.y, spec.a.name), c_find(s, spec.b.x, spec.b.y, spec.b.name)
     if not a or not b then error("\"circuits wire: no entity at " .. (a and "b" or "a") .. "\"") end
     local ca, cb = connector(a, spec.color or "red", spec.a.side or ""), connector(b, spec.color or "red", spec.b.side or "")
+    if not ca or not cb then
+        error("\"circuits wire: " .. (ca and b.name or a.name) .. " at " .. (ca and (b.position.x .. "," .. b.position.y) or (a.position.x .. "," .. a.position.y)) ..
+              " has no circuit connector (pass name= to pick the entity you mean)\"")
+    end
     local ok
     if spec.disconnect then ok = ca.disconnect_from(cb) else ok = ca.connect_to(cb, false) end
     return {ok = ok and true or false, a = a.name, b = b.name}

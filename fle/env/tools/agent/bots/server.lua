@@ -188,6 +188,15 @@ B.naturals = function(player, spec)
     return {e = out}
 end
 
+-- tree stumps (corpses, no item) in an area: removed - they block rail pieces
+B.stumps = function(player, spec)
+    local n = 0
+    for _, e in pairs(player.surface.find_entities_filtered{area = {{spec.x0, spec.y0}, {spec.x1, spec.y1}}, type = "corpse"}) do
+        if e.valid and string.find(e.name, "stump", 1, true) then e.destroy() n = n + 1 end
+    end
+    return {removed = n}
+end
+
 -- underground belt pairs whose span crosses an area: [{ax, ay, bx, by, n}] (a = input/entrance)
 B.spans = function(player, spec)
     local out, seen = {}, {}
