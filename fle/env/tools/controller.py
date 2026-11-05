@@ -34,7 +34,7 @@ _RESPONSE_WRAPPER = (
 )
 
 
-_PLAIN_STR = re.compile(r'\s*\{\s*\["a"\]\s*=\s*(true|false)\s*,\s*\["b"\]\s*=\s*"([^"\\]*)"\s*,?\s*\}\s*$', re.S)
+_PLAIN_STR = re.compile(r'\s*\{\s*\["a"\]\s*=\s*(true|false)\s*,\s*\["b"\]\s*=\s*"?([A-Z][A-Z0-9]*HEX_[0-9a-f]*)"?\s*,?\s*\}\s*$', re.S)
 
 
 def _decode_response(response: str) -> str:
