@@ -429,8 +429,14 @@ B.dump = function(player, spec)
     end
     if not chest then
         for _, c in pairs(s.find_entities_filtered{position = player.position, radius = 10, type = "container", force = player.force}) do
+            -- never a production chest (an inserter takes from / puts into it): dumps put iron and sulfur
+            -- into adv2's copper input chest
+            local used = false
+            for _, i in pairs(s.find_entities_filtered{area = {{c.position.x - 3, c.position.y - 3}, {c.position.x + 3, c.position.y + 3}}, type = "inserter"}) do
+                if i.pickup_target == c or i.drop_target == c then used = true break end
+            end
             local ci = c.get_inventory(defines.inventory.chest)
-            if ci and ci.count_empty_stacks() >= 8 then chest = c break end
+            if not used and ci and ci.count_empty_stacks() >= 8 then chest = c break end
         end
     end
     if not chest then
