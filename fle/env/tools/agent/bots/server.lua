@@ -339,10 +339,19 @@ end
 
 -- storage chest helper: an existing chest of ours near (x, y) with room (not in `skip`), else a new
 -- iron chest placed from the inventory
+-- a chest is pure storage only when no inserter takes from it or puts into it (line chests, ammo chests,
+-- cell buffers and relays are never used: 270 plates landed in an ammo chest)
+local function is_storage(s, c)
+    for _, i in pairs(s.find_entities_filtered{area = {{c.position.x - 3, c.position.y - 3}, {c.position.x + 3, c.position.y + 3}}, type = "inserter"}) do
+        local pt, dt = i.pickup_target, i.drop_target
+        if (pt and pt == c) or (dt and dt == c) then return false end
+    end
+    return true
+end
 local function storage_chest(player, x, y, skip)
     local s = player.surface
     for _, c in pairs(s.find_entities_filtered{position = {x, y}, radius = 12, type = "container", force = player.force}) do
-        if not skip[c.unit_number] then
+        if not skip[c.unit_number] and is_storage(s, c) then
             local ci = c.get_inventory(defines.inventory.chest)
             if ci and ci.count_empty_stacks() >= 4 then return c end
         end
@@ -360,7 +369,7 @@ end
 -- the character: a full inventory made the forced pickup spill thousands of plates on the ground)
 B.empty_chests = function(player, spec)
     local s = player.surface
-    local skip, moved, left = {}, {}, {}
+    local skip, moved, left, used = {}, {}, {}, {}
     for _, u in ipairs(spec.units or {}) do skip[tonumber(u)] = true end
     for _, c in pairs(s.find_entities_filtered{area = {{spec.x0, spec.y0}, {spec.x1, spec.y1}}, type = "container", force = player.force}) do
         if skip[c.unit_number] then
@@ -372,6 +381,7 @@ B.empty_chests = function(player, spec)
                     local dst = storage_chest(player, c.position.x, c.position.y, skip)
                     if not dst then break end
                     local n = dst.get_inventory(defines.inventory.chest).insert{name = it.name, count = rest, quality = it.quality}
+                    used[dst.position.x .. "," .. dst.position.y] = true
                     if n <= 0 then skip[dst.unit_number] = true else
                         ci.remove{name = it.name, count = n, quality = it.quality}
                         moved[it.name] = (moved[it.name] or 0) + n
@@ -382,25 +392,30 @@ B.empty_chests = function(player, spec)
             end
         end
     end
-    return {moved = moved, left = left}
+    local ul = {}
+    for k, _ in pairs(used) do ul[#ul + 1] = k end
+    return {moved = moved, left = left, chests = ul}
 end
 
 -- gather_ground: items lying on the ground in an area -> storage chests nearby
 B.gather_ground = function(player, spec)
     local s = player.surface
     local moved, n = {}, 0
-    local skip = {}
+    local skip, used = {}, {}
     for _, e in pairs(s.find_entities_filtered{area = {{spec.x0, spec.y0}, {spec.x1, spec.y1}}, type = "item-entity"}) do
         if e.valid and e.stack and e.stack.valid_for_read then
             local dst = storage_chest(player, e.position.x, e.position.y, skip)
             if not dst then break end
             local name, count = e.stack.name, e.stack.count
+            used[dst.position.x .. "," .. dst.position.y] = true
             local k = dst.get_inventory(defines.inventory.chest).insert(e.stack)
             if k >= count then e.destroy() n = n + 1 moved[name] = (moved[name] or 0) + k
             elseif k > 0 then e.stack.count = count - k moved[name] = (moved[name] or 0) + k end
         end
     end
-    return {moved = moved, stacks = n}
+    local ul = {}
+    for k, _ in pairs(used) do ul[#ul + 1] = k end
+    return {moved = moved, stacks = n, chests = ul}
 end
 
 -- tree stumps (corpses, no item) in an area: removed - they block rail pieces
