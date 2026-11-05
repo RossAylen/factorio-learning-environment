@@ -25,7 +25,7 @@ storage.actions.scan = function(player_index, names_hex, x, y, radius, limit)
         if s then r.s = s end
         if e.type == "container" or e.type == "logistic-container" then
             r.inv = contents(e.get_inventory(defines.inventory.chest))
-        elseif e.type == "furnace" then
+        elseif e.type == "furnace" or e.type == "assembling-machine" then
             r.out = contents(e.get_output_inventory())
         elseif e.type == "ammo-turret" then
             r.ammo = contents(e.get_inventory(defines.inventory.turret_ammo))
