@@ -18,9 +18,13 @@ local function serialize_position(pos)
 end
 
 -- Main serialization function
-storage.actions.save_entity_state = function(player_index, distance, player_entities, resource_entities, items_on_ground)
+storage.actions.save_entity_state = function(player_index, distance, player_entities, resource_entities, items_on_ground, only)
     local surface = storage.agent_characters[player_index].surface
-    if player_entities then
+    local entities
+    if only then
+        entities = only
+        items_on_ground = false
+    elseif player_entities then
         entities = surface.find_entities_filtered({area={{-distance, -distance}, {distance, distance}}, force=storage.agent_characters[player_index].force})
     else
         if resource_entities then
@@ -365,4 +369,59 @@ storage.actions.save_entity_state = function(player_index, distance, player_enti
         end
     end
     return entity_array
+end
+
+
+-- Chunked snapshot: a whole-map save serialised every entity inside ONE tick (8.6 s on the live
+-- base). begin -> the entity list goes to storage, an on_tick handler serialises SES_BATCH entities
+-- per tick, poll pages the result out.
+local SES_BATCH = 200
+storage.actions.save_entity_state_begin = function(player_index, distance, player_entities, resource_entities, items_on_ground)
+    local c = storage.agent_characters[player_index]
+    local surface = c.surface
+    local area = {{-distance, -distance}, {distance, distance}}
+    local ents
+    if resource_entities and not player_entities then
+        ents = surface.find_entities(area)
+    else
+        ents = surface.find_entities_filtered{area = area, force = c.force}
+    end
+    if items_on_ground then
+        for _, it in pairs(surface.find_entities_filtered{area = area, name = "item-on-ground"}) do table.insert(ents, it) end
+    end
+    storage.ses_job = {pi = player_index, d = distance, pe = player_entities, re = resource_entities,
+                       ents = ents, i = 1, out = {}, done = false, ground = items_on_ground}
+    return {total = #ents}
+end
+
+script.on_event(defines.events.on_tick, function(ev)
+    local j = storage.ses_job
+    if not j or j.done then return end
+    local slice = {}
+    local n = 0
+    while j.i <= #j.ents and n < SES_BATCH do
+        local e = j.ents[j.i]
+        j.i = j.i + 1
+        if e and e.valid then slice[#slice + 1] = e n = n + 1 end
+    end
+    if #slice > 0 then
+        local ok, part = pcall(storage.actions.save_entity_state, j.pi, j.d, j.pe, j.re, false, slice)
+        if ok and part then
+            for _, st in ipairs(part) do j.out[#j.out + 1] = st end
+        end
+    end
+    if j.i > #j.ents then j.done = true j.ents = nil end
+end)
+
+-- page through the result: {done, total, n, items (page of up to `size`)}
+storage.actions.save_entity_state_poll = function(player_index, page, size)
+    local j = storage.ses_job
+    if not j then return {done = true, n = 0, items = {}} end
+    if not j.done or tonumber(page) == -1 then return {done = j.done, n = #j.out, items = {}} end
+    page, size = tonumber(page) or 0, tonumber(size) or 500
+    local items = {}
+    for k = page * size + 1, math.min(#j.out, (page + 1) * size) do items[#items + 1] = j.out[k] end
+    local last = (page + 1) * size >= #j.out
+    if last then storage.ses_job = nil end
+    return {done = true, n = #j.out, items = items, last = last}
 end
