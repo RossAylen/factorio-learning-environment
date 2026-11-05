@@ -26,10 +26,25 @@ storage.actions.trace_items = function(player_index, sx, sy, tx, ty, max_nodes)
         end
         return nil
     end
+    local function near(x, y)   -- what IS close by, so the caller can fix the position
+        local best, bd = {}, {}
+        for _, e in pairs(surface.find_entities_filtered{position = {x, y}, radius = 3, force = player.force}) do
+            if not TRACE_SKIP[e.type] and e.type ~= "character" then
+                best[#best + 1] = {e, (e.position.x - x) ^ 2 + (e.position.y - y) ^ 2}
+            end
+        end
+        table.sort(best, function(a, b) return a[2] < b[2] end)
+        local out = {}
+        for i = 1, math.min(3, #best) do
+            local e = best[i][1]
+            out[#out + 1] = e.name .. " at (" .. e.position.x .. ", " .. e.position.y .. ")"
+        end
+        return #out > 0 and ("; nearest: " .. table.concat(out, ", ")) or "; nothing of ours within 3 tiles"
+    end
     local src = ent_at(sx, sy)
-    if not src then error("\"trace_items: no entity at the source (" .. sx .. ", " .. sy .. ")\"") end
+    if not src then error("\"trace_items: no entity at the source (" .. sx .. ", " .. sy .. ")" .. near(sx, sy) .. "\"") end
     local tgt = ent_at(tx, ty)
-    if not tgt then error("\"trace_items: no entity at the target (" .. tx .. ", " .. ty .. ")\"") end
+    if not tgt then error("\"trace_items: no entity at the target (" .. tx .. ", " .. ty .. ")" .. near(tx, ty) .. "\"") end
 
     local function key(e) return e.unit_number or (e.name .. e.position.x .. "," .. e.position.y) end
     local dead_ends, notes = {}, {}
