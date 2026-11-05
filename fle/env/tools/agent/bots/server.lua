@@ -172,6 +172,17 @@ B.follow = function(player, spec)
     return {tiles = out}
 end
 
+-- trees, rocks and cliffs in an area: [{n, x, y, k = tree|rock|cliff}]
+B.naturals = function(player, spec)
+    local out = {}
+    for _, e in pairs(player.surface.find_entities_filtered{area = {{spec.x0, spec.y0}, {spec.x1, spec.y1}},
+            type = {"tree", "simple-entity", "cliff"}}) do
+        out[#out + 1] = {n = e.name, x = e.position.x, y = e.position.y,
+                         k = (e.type == "tree" and "tree") or (e.type == "cliff" and "cliff") or "rock"}
+    end
+    return {e = out}
+end
+
 -- single ghosts: [{n, x, y, d, recipe?, type?}]
 B.ghost = function(player, spec)
     local n = 0
