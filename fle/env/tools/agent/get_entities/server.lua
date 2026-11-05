@@ -24,7 +24,12 @@ storage.actions.get_entities = function(player_index, radius, entity_names_json,
     local entities
 
     if #entity_names > 0 then
-        entities = player.surface.find_entities_filtered{area = area, force = player.force, filter=filter}
+        -- name = ..., not filter = {...}: find_entities_filtered has no 'filter' key, so every
+        -- entity in the area was serialised and the client threw most away (85 s for "labs, r=150")
+        local valid = {}
+        for _, n in ipairs(entity_names) do if prototypes.entity[n] then valid[#valid + 1] = n end end
+        if #valid == 0 then return dump({}) end
+        entities = player.surface.find_entities_filtered{area = area, force = player.force, name = valid}
     else
         entities = player.surface.find_entities_filtered{area = area, force = player.force}
     end
