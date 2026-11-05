@@ -149,6 +149,24 @@ B.ore_at = function(player, spec)
     return {at = out}
 end
 
+-- unlock state from the FORCE: spec.recipe -> {enabled}, spec.tech -> {researched, level}
+B.tech = function(player, spec)
+    local f = player.force
+    local out = {}
+    if spec.recipe then
+        local r = f.recipes[spec.recipe]
+        out.recipe_exists = r ~= nil
+        out.enabled = r ~= nil and r.enabled or false
+    end
+    if spec.tech then
+        local t = f.technologies[spec.tech]
+        out.tech_exists = t ~= nil
+        out.researched = t ~= nil and t.researched or false
+        if t then out.level = t.level end
+    end
+    return out
+end
+
 -- spec.pi, spec.clear: the units this agent created during the current transaction (still alive)
 B.txn = function(player, spec)
     storage.txn_units = storage.txn_units or {}

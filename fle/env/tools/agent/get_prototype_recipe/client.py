@@ -50,4 +50,8 @@ class GetPrototypeRecipe(Tool):
             for product in parsed_response["products"]
         ]
 
-        return Recipe(name=name, ingredients=ingredients, products=products)
+        # the FORCE recipe's enabled flag (Recipe.enabled defaulted to False: agents read a researched
+        # recipe as locked)
+        en = parsed_response.get("enabled")
+        en = en if isinstance(en, bool) else str(en).lower() == "true"
+        return Recipe(name=name, ingredients=ingredients, products=products, enabled=en)
