@@ -87,6 +87,33 @@ B.belt_items = function(player, spec)
     return {items = items, first = first}
 end
 
+-- take every item except spec.keep off the belt tiles into the character (like picking the belts
+-- up and down again): spec.tiles = [[x, y], ...] -> {taken = {name = count}, left = {name = count}}
+B.belt_purge = function(player, spec)
+    local taken, left = {}, {}
+    local keep = {}
+    for _, k in ipairs(spec.keep or {}) do keep[k] = true end
+    for _, t in ipairs(spec.tiles or {}) do
+        for _, e in pairs(player.surface.find_entities_filtered{position = {t[1], t[2]}, radius = 0.4,
+                type = {"transport-belt", "underground-belt", "splitter"}}) do
+            for li = 1, e.get_max_transport_line_index() do
+                local line = e.get_transport_line(li)
+                for _, it in pairs(line.get_contents()) do
+                    if not keep[it.name] then
+                        local n = player.insert{name = it.name, count = it.count, quality = it.quality}
+                        if n > 0 then
+                            line.remove_item{name = it.name, count = n, quality = it.quality}
+                            taken[it.name] = (taken[it.name] or 0) + n
+                        end
+                        if n < it.count then left[it.name] = (left[it.name] or 0) + it.count - n end
+                    end
+                end
+            end
+        end
+    end
+    return {taken = taken, left = left}
+end
+
 -- single ghosts: [{n, x, y, d, recipe?, type?}]
 B.ghost = function(player, spec)
     local n = 0
