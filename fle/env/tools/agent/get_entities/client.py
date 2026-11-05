@@ -19,6 +19,7 @@ class GetEntities(Tool):
         entities: Union[Set[Prototype], Prototype] = set(),
         position: Position = None,
         radius: float = 1000,
+        big: bool = False,
     ) -> List[Union[Entity, EntityGroup]]:
         """
         Get entities within a radius of a given position.
@@ -28,6 +29,13 @@ class GetEntities(Tool):
         :param player_only: If True, only player entities are returned, otherwise terrain features too.
         :return: Found entities
         """
+        # every entity in the radius is serialised inside ONE game tick: the default radius 1000
+        # froze the live server for 72 s per call. Clamp to 150 unless big=True.
+        if radius is not None and radius > 150 and not big:
+            print(f"get_entities: radius {radius:g} clamped to 150 (whole-base reads freeze the server); "
+                  f"pass a position near what you want, or big=True if you really need it")
+            radius = 150
+
 
         try:
             if not isinstance(position, Position) and position is not None:

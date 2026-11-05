@@ -184,13 +184,16 @@ class ComposeGenerator:
         args.append("--mod-directory /opt/factorio/mods")
         factorio_bin = f"{self._emulator()} /opt/factorio/bin/x64/factorio".strip()
         factorio_cmd = " ".join([factorio_bin, launch_command] + args)
+        # the server writes /factorio/saves on a save; a missing dir crashed it (a rebuilt container
+        # does not have it)
+        mk = "mkdir -p /factorio/saves 2>/dev/null; "
         if self.space_age:
-            return f"/bin/sh -c 'exec {factorio_cmd}'"
+            return f"/bin/sh -c '{mk}exec {factorio_cmd}'"
         # Remove DLC data dirs so the server runs vanilla base-game only;
         # this prevents "Sync mods with server" / "No release" errors for
         # clients that don't own Space Age.
         return (
-            f"/bin/sh -c '"
+            f"/bin/sh -c '{mk}"
             f"rm -rf /opt/factorio/data/elevated-rails "
             f"/opt/factorio/data/quality /opt/factorio/data/recycler "
             f"/opt/factorio/data/space-age && "

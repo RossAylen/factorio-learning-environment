@@ -3,7 +3,7 @@
 -- machines: assembling-machine (incl. chem plants, refineries), furnace, lab, ammo-turret, boiler
 -- shared cache: base_status() in every agent's pulse read the whole base every game-minute; one
 -- read per area per AR_TTL ticks serves all agents (a negative limit forces a fresh read)
-local AR_TTL = 1800
+local AR_TTL = 4200   -- agents poll about every 64 s
 local ar_compute
 storage.actions.audit_read = function(player_index, x0, y0, x1, y1, limit)
     local lim = tonumber(limit) or 800

@@ -156,7 +156,24 @@ local function ar_refill()
 end
 
 script.on_event(defines.events.on_research_finished, function(ev) ar_refill() end)
-script.on_nth_tick(60, function(ev) if ev.tick % 600 == 0 then ar_refill() end end)
+-- every 600 ticks only a cheap check: refill (a full technology scan, ~20 ms) only when nothing is
+-- being researched, the queue is short, or the head's packs stopped arriving (labs idle)
+local function ar_needs_refill()
+    local force = game.forces.player
+    if not force then return false end
+    local cr = force.current_research
+    if not cr then return true end
+    local q = force.research_queue or {}
+    if #q < AR_MIN then return true end
+    local stats = force.get_item_production_statistics(game.surfaces[1])
+    for _, ing in pairs(cr.research_unit_ingredients) do
+        local ok, n = pcall(function() return stats.get_flow_count{name = ing.name, category = "output",
+            precision_index = defines.flow_precision_index.one_minute, count = true} end)
+        if ok and (n or 0) <= 0 then return true end   -- labs consumed none of this pack last minute
+    end
+    return false
+end
+script.on_nth_tick(60, function(ev) if ev.tick % 600 == 0 and ar_needs_refill() then ar_refill() end end)
 
 -- the planner's list; refills at once. Returns {queue, current}
 storage.actions.auto_research = function(player_index, names_hex)
