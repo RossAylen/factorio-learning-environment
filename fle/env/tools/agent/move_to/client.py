@@ -10,6 +10,21 @@ from fle.env.tools import Tool
 from fle.env.lua_manager import LuaScriptManager
 
 
+# Hooks set by the play library (per process): GUARD["path"](points, start, goal) may raise to refuse a
+# planned path (e.g. one that leaves the turret rings); GUARD["step"]() is polled every 0.5 s while a
+# slow walk is under way and returns a reason string to STOP it (enemies came near), or None.
+# (kept in the controller module: tool clients are loaded per instance by file path, so a module
+# global here would not be the one the play library sees)
+from fle.env.tools import controller as _ctl
+if not hasattr(_ctl, "WALK_GUARD"):
+    _ctl.WALK_GUARD = {"path": None, "step": None}
+GUARD = _ctl.WALK_GUARD
+
+
+class WalkStopped(Exception):
+    """The walk was stopped part-way by GUARD["step"] (the character stands where it stopped)."""
+
+
 class MoveTo(Tool):
     def __init__(self, connection: LuaScriptManager, game_state):
         super().__init__(connection, game_state)
@@ -113,6 +128,14 @@ class MoveTo(Tool):
                         f"(pickup_entity(...)), walk out, and re-place it." if around else "")
                 raise Exception(f"Could not get path to ({x}, {y}) from ({start.x:.1f}, {start.y:.1f}): {err2 or err}.{hint}")
 
+        if GUARD.get("path"):
+            try:
+                pts = self.get_path(path_handle)
+            except Exception:
+                pts = None
+            if pts:
+                GUARD["path"](pts, start, nposition)     # raises to refuse the path
+
         # Track elapsed ticks for fast forward
         ticks_before = self.game_state.instance.get_elapsed_ticks()
 
@@ -165,6 +188,16 @@ class MoveTo(Tool):
                 t_walk = _time.time()
                 while remaining_steps != "0" and _time.time() - t_walk < 600:
                     sleep(0.5)
+                    if GUARD.get("step"):
+                        why = None
+                        try:
+                            why = GUARD["step"]()
+                        except Exception:
+                            why = None
+                        if why:
+                            self.connection.rcon_client.send_command(
+                                f"/silent-command storage.actions.clear_walking_queue({self.player_index})")
+                            raise WalkStopped(f"walk to ({position.x}, {position.y}) stopped: {why}")
                     remaining_steps = self.connection.rcon_client.send_command(
                         f"/silent-command rcon.print(storage.actions.get_walking_queue_length({self.player_index}))"
                     )

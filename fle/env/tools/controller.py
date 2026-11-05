@@ -39,6 +39,7 @@ _RESPONSE_WRAPPER = (
 # exactly (another agent's commands cannot interleave inside one command) -> a rollback removes only
 # what THIS character placed. Units accumulate in storage.txn_units[pi] (bots op "txn").
 TXN = {"rect": None, "pi": None}
+WALK_GUARD = {"path": None, "step": None}   # move_to hooks (see agent/move_to/client.py)
 _TXN_SKIP = {"bots", "flow_read", "kpi_read", "trace_items", "vitals", "score", "sleep", "inspect_inventory",
              "get_entities", "get_entity", "nearest", "nearest_buildable", "can_place_entity", "get_prototype_recipe",
              "print", "inspect_entities", "get_resource_patch", "get_connection_amount", "alarm"}
