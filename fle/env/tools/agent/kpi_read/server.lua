@@ -53,43 +53,95 @@ K.clean = function(player, spec)
     local area = spec.x0 and {{spec.x0, spec.y0}, {spec.x1, spec.y1}} or nil
     local function find(f) if area then f.area = area end f.force = force return surf.find_entities_filtered(f) end
     local res = {}
-    -- 1. redundant poles: a pole whose supply square lies inside another pole's supply square
+    -- 1. redundant poles: removing it keeps every powered entity in its supply area covered by
+    -- another pole AND its copper neighbours still connected to each other (no network split)
     local poles = find{type = "electric-pole"}
-    local red, red_at = 0, {}
+    local red, red_at, red_list = 0, {}, {}
     local grid = {}
     for _, p in ipairs(poles) do
         local k = math.floor(p.position.x / 8) .. "," .. math.floor(p.position.y / 8)
         grid[k] = grid[k] or {}
         table.insert(grid[k], p)
     end
-    for _, p in ipairs(poles) do
-        local sp = p.prototype.get_supply_area_distance()
-        local gx, gy = math.floor(p.position.x / 8), math.floor(p.position.y / 8)
-        local found = false
-        for ix = gx - 2, gx + 2 do
-            for iy = gy - 2, gy + 2 do
-                for _, q in ipairs(grid[ix .. "," .. iy] or {}) do
-                    if q ~= p and not found then
-                        local sq = q.prototype.get_supply_area_distance()
-                        local ddx, ddy = math.abs(q.position.x - p.position.x), math.abs(q.position.y - p.position.y)
-                        if ddx + sp <= sq + 0.01 and ddy + sp <= sq + 0.01 and (sq > sp or q.unit_number < p.unit_number) then
-                            found = true   -- its whole supply area is inside q's
-                        elseif ddx <= 1.5 and ddy <= 1.5 and sq >= sp and q.unit_number < p.unit_number then
-                            found = true   -- a doubled pole right next to another
-                        end
-                    end
+    local function others_near(x, y, r)
+        local out = {}
+        local gx0, gx1, gy0, gy1 = math.floor((x - r) / 8), math.floor((x + r) / 8), math.floor((y - r) / 8), math.floor((y + r) / 8)
+        for ix = gx0, gx1 do for iy = gy0, gy1 do
+            for _, q in ipairs(grid[ix .. "," .. iy] or {}) do out[#out + 1] = q end
+        end end
+        return out
+    end
+    local removed = {}
+    local function covered_without(e, p)
+        local bb = e.bounding_box
+        for _, q in ipairs(others_near(e.position.x, e.position.y, 12)) do
+            if q ~= p and q.valid and not removed[q.unit_number] then
+                local sq = q.prototype.get_supply_area_distance()
+                if bb.right_bottom.x > q.position.x - sq and bb.left_top.x < q.position.x + sq
+                   and bb.right_bottom.y > q.position.y - sq and bb.left_top.y < q.position.y + sq then
+                    return true
                 end
             end
         end
-        if found then
-            red = red + 1
-            local k = area_key(p.position.x, p.position.y, 32)
-            red_at[k] = (red_at[k] or 0) + 1
+        return false
+    end
+    local function nbs(p)
+        local out = {}
+        local c = p.get_wire_connector(defines.wire_connector_id.pole_copper, false)
+        if c then for _, w in pairs(c.connections) do
+            local o = w.target.owner
+            if o and o.valid and o.type == "electric-pole" then out[#out + 1] = o end
+        end end
+        return out
+    end
+    local function connected_without(p)
+        local ns = nbs(p)
+        if #ns <= 1 then return true end
+        local want = {}
+        for _, n in ipairs(ns) do want[n.unit_number] = true end
+        local seen, q, found = {[p.unit_number] = true, [ns[1].unit_number] = true}, {ns[1]}, 1
+        local steps = 0
+        while #q > 0 and steps < 3000 do
+            local cur = table.remove(q)
+            steps = steps + 1
+            for _, o in ipairs(nbs(cur)) do
+                if not seen[o.unit_number] and not removed[o.unit_number] then
+                    seen[o.unit_number] = true
+                    if want[o.unit_number] then found = found + 1 if found == #ns then return true end end
+                    q[#q + 1] = o
+                end
+            end
+        end
+        return false
+    end
+    for _, p in ipairs(poles) do
+        if p.valid then
+            local sp = p.prototype.get_supply_area_distance()
+            local ok = true
+            for _, e in pairs(surf.find_entities_filtered{area = {{p.position.x - sp, p.position.y - sp}, {p.position.x + sp, p.position.y + sp}}, force = force}) do
+                local powered = false
+                if e.type ~= "electric-pole" then
+                    pcall(function() powered = (e.electric_buffer_size or 0) > 0 end)
+                end
+                if powered then
+                    if not covered_without(e, p) then ok = false break end
+                end
+            end
+            if ok and connected_without(p) then
+                -- greedy: count it as removed, so two poles covering each other are not both reported
+                removed[p.unit_number] = true
+                red = red + 1
+                local k = area_key(p.position.x, p.position.y, 32)
+                red_at[k] = (red_at[k] or 0) + 1
+                if #red_list < 300 then red_list[#red_list + 1] = {x = p.position.x, y = p.position.y, n = p.name,
+                    why = "its supply area stays covered and its neighbours stay connected without it"} end
+            end
         end
     end
     res.poles = #poles
     res.redundant_poles = red
     res.redundant_at = red_at
+    res.redundant_list = red_list
     -- 2. belts to nowhere + 3. empty belts (with first-seen-empty ticks kept in storage)
     local DV = {[0] = {0, -1}, [4] = {1, 0}, [8] = {0, 1}, [12] = {-1, 0}}
     local belts = find{type = "transport-belt"}
@@ -105,11 +157,14 @@ K.clean = function(player, spec)
         local dv = DV[b.direction]
         if dv then
             local tx, ty = b.position.x + dv[1], b.position.y + dv[2]
-            local nxt = surf.find_entities_filtered{position = {tx, ty}, radius = 0.4,
+            -- area (not position+radius): a splitter is centred between two tiles, 0.5 from either tile centre
+            local nxt = surf.find_entities_filtered{area = {{tx - 0.3, ty - 0.3}, {tx + 0.3, ty + 0.3}},
                 type = {"transport-belt", "underground-belt", "splitter", "loader", "loader-1x1", "linked-belt"}}
             local fed_inserter = pick[math.floor(b.position.x) .. "," .. math.floor(b.position.y)]
             if #nxt == 0 and not fed_inserter then
                 dead = dead + 1
+                res.nowhere_list = res.nowhere_list or {}
+                if #res.nowhere_list < 300 then res.nowhere_list[#res.nowhere_list + 1] = {x = b.position.x, y = b.position.y, why = "output tile has no belt and no inserter takes from it"} end
                 local k = area_key(b.position.x, b.position.y, 32)
                 dead_at[k] = (dead_at[k] or 0) + 1
             end
@@ -122,6 +177,8 @@ K.clean = function(player, spec)
             E[u] = E[u] or game.tick
             if game.tick - E[u] >= 36000 then
                 empty_long = empty_long + 1
+                res.empty_list = res.empty_list or {}
+                if #res.empty_list < 300 then res.empty_list[#res.empty_list + 1] = {x = b.position.x, y = b.position.y, why = "empty since tick " .. E[u]} end
                 local k = area_key(b.position.x, b.position.y, 32)
                 empty_at[k] = (empty_at[k] or 0) + 1
             end
@@ -147,6 +204,8 @@ K.clean = function(player, spec)
         local s = ST[m.status] or "?"
         mstat[s] = (mstat[s] or 0) + 1
         if s ~= "working" and s ~= "normal" then
+            res.machine_list = res.machine_list or {}
+            if #res.machine_list < 400 then res.machine_list[#res.machine_list + 1] = {x = m.position.x, y = m.position.y, n = m.name, why = s} end
             local k = s .. "@" .. area_key(m.position.x, m.position.y, 32)
             mat[k] = (mat[k] or 0) + 1
         end
