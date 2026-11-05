@@ -693,7 +693,19 @@ class MiningDrill(StaticEntity):
     The direction of the drill is where the drop_position is oriented towards"""
 
     drop_position: Position
-    resources: List[Ingredient]
+    resources: List[Ingredient] = []   # serialize may omit it (no resource under a drill / depleted): optional
+
+    @model_validator(mode="before")
+    @classmethod
+    def _resources_any_shape(cls, data):
+        # Lua sends an empty table as {} (not []) and may leave the field out
+        if isinstance(data, dict):
+            r = data.get("resources")
+            if r is None or r == {} or r == "":
+                data = dict(data, resources=[])
+            elif isinstance(r, dict):
+                data = dict(data, resources=list(r.values()))
+        return data
 
 
 class ElectricMiningDrill(MiningDrill, Electric):
