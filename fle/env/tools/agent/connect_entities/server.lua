@@ -1802,7 +1802,7 @@ local function heap_pop(h)
     return top
 end
 
-local function ug_route(player_index, source_x, source_y, target_x, target_y, connection_types, dry_run)
+local function ug_route(player_index, source_x, source_y, target_x, target_y, connection_types, dry_run, plan)
     local player = storage.agent_characters[player_index]
     local surface = player.surface
     -- profile: surface piece, optional underground piece (jumps up to its prototype range)
@@ -2082,6 +2082,13 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
     end
     local total = #to_place
 
+    if plan then   -- the planned pieces, nothing placed
+        local out = {}
+        for _, p in ipairs(pieces) do
+            out[#out + 1] = {x = p.x, y = p.y, d = p.dir, n = p.name, r = p.role, e = p.existing and true or nil}
+        end
+        return out
+    end
     if dry_run then
         return {entities = {}, connected = true, number_of_entities = total}
     end
@@ -2408,4 +2415,12 @@ storage.actions.connect_entities = function(player_index, source_x, source_y, ta
     end
 
     return result
+end
+
+
+-- route planning without placing (belt_link plans every leg first): pieces [{x, y, d, n, r (role), e (exists)}]
+storage.route_plan = function(player_index, sx, sy, tx, ty, types_csv)
+    local types = {}
+    for item in string.gmatch(types_csv, "([^,]+)") do table.insert(types, item) end
+    return ug_route(player_index, sx, sy, tx, ty, types, true, true)
 end
