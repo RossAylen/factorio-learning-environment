@@ -108,6 +108,15 @@ F.graph = function(player, spec)
             local nb = storage.neighbours and storage.neighbours(b) or nil
             if nb and nb.valid then r.pu = nb.unit_number end
         end
+        if b.type == "splitter" then
+            -- filter splitter: the filter item goes to the priority side, everything else to the other
+            pcall(function()
+                local f = b.splitter_filter
+                if f then r.sf = (type(f) == "string" and f) or f.name or (f.name and f.name.name) end
+                if type(r.sf) ~= "string" then r.sf = nil end
+                r.sp = b.splitter_output_priority
+            end)
+        end
         local dv = DV[b.direction]
         if dv then r.nx, r.ny = b.position.x + dv[1], b.position.y + dv[2] end
         out.belts[#out.belts + 1] = r
