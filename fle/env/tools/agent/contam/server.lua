@@ -161,7 +161,8 @@ A.splitter_filter = function(player, spec)
     local s = player.surface.find_entities_filtered{position = {spec.x, spec.y}, radius = 1, type = "splitter", force = player.force}[1]
     if not s then error('"contam: no splitter at ' .. spec.x .. ',' .. spec.y .. '"') end
     s.splitter_filter = spec.item and {name = spec.item} or nil
-    s.splitter_output_priority = spec.side or "left"
+    -- side="none" (or no item): a plain 50/50 splitter, no output priority
+    s.splitter_output_priority = (spec.side == "none" or not spec.item) and "none" or (spec.side or "left")
     return {splitter = s.name, x = s.position.x, y = s.position.y, filter = spec.item, side = s.splitter_output_priority}
 end
 
