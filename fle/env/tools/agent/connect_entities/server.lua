@@ -2318,12 +2318,14 @@ local function pole_route(player_index, source_x, source_y, target_x, target_y, 
     g[START] = 0
     heap_push(open, 0, START)
     local goal, expansions = nil, 0
+    -- one game tick per search: cap by distance (20000 expansions took 2.6 s on the live base)
+    local POLE_MAX = math.min(6000, math.max(1500, 60 * (math.abs(tonumber(target_x) - tonumber(source_x)) + math.abs(tonumber(target_y) - tonumber(source_y)))))
     while #open > 0 do
         local cur = heap_pop(open)[2]
         if not closed[cur] then
             closed[cur] = true
             expansions = expansions + 1
-            if expansions > 20000 then break end
+            if expansions > POLE_MAX then break end
             local x, y = pos[cur][1], pos[cur][2]
             if cur ~= START and at_goal(x, y) then goal = cur break end
             for _, c in pairs(candidates(x, y, cur == START)) do
