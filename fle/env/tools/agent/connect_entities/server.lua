@@ -1990,7 +1990,10 @@ local function ug_route(player_index, source_x, source_y, target_x, target_y, co
     end
 
     local goal = nil
-    local expansions, MAX_EXPANSIONS = 0, 150000
+    -- the whole search runs inside ONE game tick: cap it by the distance (a hopeless 150k-node
+    -- search froze the server for seconds; a real route needs a few hundred nodes per tile)
+    local expansions = 0
+    local MAX_EXPANSIONS = math.min(150000, math.max(6000, 500 * (math.abs(tx - sx) + math.abs(ty - sy))))
     while #open > 0 do
         local top = heap_pop(open)
         local cur = top[2]
