@@ -110,6 +110,29 @@ B.fluid_probe = function(player, spec)
     return {segments = out, entities = list}
 end
 
+-- unit-number watermarks: unit numbers only grow, so "built in the last N ticks" = unit number above
+-- the highest one that existed N ticks ago. op records one mark per >= 3 game-minutes (kept 3 h);
+-- spec.age (ticks) -> cutoff (nil = no mark that old yet: then the oldest mark, conservative)
+B.unit_wm = function(player, spec)
+    storage.unit_wm = storage.unit_wm or {}
+    local wm = storage.unit_wm
+    local last = wm[#wm]
+    if not last or game.tick - last.t >= 10800 then
+        local mx = 0
+        for _, e in pairs(player.surface.find_entities_filtered{force = player.force}) do
+            local u = e.unit_number
+            if u and u > mx then mx = u end
+        end
+        wm[#wm + 1] = {t = game.tick, u = mx}
+        while #wm > 1 and game.tick - wm[1].t > 648000 do table.remove(wm, 1) end
+    end
+    local cutoff, oldest = nil, wm[1]
+    for _, m in ipairs(wm) do
+        if game.tick - m.t >= (spec.age or 108000) then cutoff = m.u end
+    end
+    return {cutoff = cutoff or (oldest and oldest.u), exact = cutoff ~= nil, marks = #wm, tick = game.tick}
+end
+
 -- spec.pi, spec.clear: the units this agent created during the current transaction (still alive)
 B.txn = function(player, spec)
     storage.txn_units = storage.txn_units or {}

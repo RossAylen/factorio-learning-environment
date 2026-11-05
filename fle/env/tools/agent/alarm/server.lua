@@ -199,6 +199,28 @@ local function train_fuel_state(a)
             active = first ~= nil, value = first and ("train " .. first[1] .. " loco fuel " .. first[4] .. " (" .. #low .. " low)") or nil, powered = true}
 end
 
+-- what the alarm watches: the entities wired to its input side (the combinator input, or the
+-- speaker itself when nothing sits between); none left = the target is gone (stale alarm)
+local function target_of(a)
+    local own = {}
+    for _, e in ipairs(a.ents or {}) do if e.valid then own[e.unit_number or -1] = true end end
+    local probe = (a.ents and a.ents[2] and a.ents[2].valid and a.ents[2].type == "arithmetic-combinator") and {a.ents[2], CIN} or {a.speaker, R}
+    local tgt, n = nil, 0
+    pcall(function()
+        local wc = probe[1].get_wire_connector(probe[2], false)
+        if wc then
+            for _, c in pairs(wc.connections) do
+                local o = c.target and c.target.owner
+                if o and o.valid and not own[o.unit_number or -1] then
+                    n = n + 1
+                    tgt = tgt or o
+                end
+            end
+        end
+    end)
+    return tgt, n
+end
+
 local function state(a)
     if a.cond == "train_fuel" then return train_fuel_state(a) end
     local s = a.speaker
@@ -214,26 +236,15 @@ local function state(a)
         if a.cond == "A>n" then active = A_ > (a.n or 0) else active = A_ < (a.n or 1) end
         worst = A_
     end
+    local tgt, ntg = target_of(a)
     return {id = a.id, kind = a.kind, text = a.text, x = s.position.x, y = s.position.y, active = active, value = worst,
-            powered = s.is_connected_to_electric_network() and (s.energy or 0) > 0}
+            powered = s.is_connected_to_electric_network() and (s.energy or 0) > 0,
+            tx = tgt and tgt.position.x, ty = tgt and tgt.position.y, tn = tgt and tgt.name, stale = ntg == 0}
 end
 
-A.list = function(player, spec)
-    local out = {}
-    for id, a in pairs(storage.alarms) do
-        local st = state(a)
-        if st then
-            if not spec.active_only or st.active then out[#out + 1] = st end
-        else
-            storage.alarms[id] = nil
-        end
-    end
-    return {alarms = out}
-end
-
-A.remove = function(player, spec)
-    local a = storage.alarms[spec.id]
-    if not a then return {removed = 0} end
+local function remove_alarm(player, id)
+    local a = storage.alarms[id]
+    if not a then return 0 end
     local n = 0
     for _, e in ipairs(a.ents or {}) do
         if e.valid then
@@ -241,8 +252,28 @@ A.remove = function(player, spec)
             if e.destroy() then n = n + 1 player.insert{name = nm, count = 1} end
         end
     end
-    storage.alarms[spec.id] = nil
-    return {removed = n}
+    storage.alarms[id] = nil
+    return n
+end
+
+A.list = function(player, spec)
+    local out, pruned = {}, {}
+    for id, a in pairs(storage.alarms) do
+        local st = state(a)
+        if st and st.stale and spec.prune then
+            -- the watched entity is gone (chest removed, row retired): speaker + combinators go too
+            pruned[#pruned + 1] = {id = id, text = st.text, x = st.x, y = st.y, removed = remove_alarm(player, id)}
+        elseif st then
+            if not spec.active_only or st.active then out[#out + 1] = st end
+        else
+            storage.alarms[id] = nil
+        end
+    end
+    return {alarms = out, pruned = pruned}
+end
+
+A.remove = function(player, spec)
+    return {removed = remove_alarm(player, spec.id)}
 end
 
 storage.actions.alarm = function(player_index, op, spec_hex)
