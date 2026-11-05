@@ -103,10 +103,23 @@ storage.actions.rail_read = function(player_index, x, y, radius)
             local fr = t.front_stock
             local pes, fuel, ints = nil, {}, {}
             pcall(function() if t.path_end_stop then pes = {name = t.path_end_stop.backer_name, x = t.path_end_stop.position.x, y = t.path_end_stop.position.y} end end)
-            pcall(function() for _, lo in pairs(t.locomotives.front_movers) do for _, it in pairs(lo.get_fuel_inventory().get_contents()) do fuel[it.name] = (fuel[it.name] or 0) + it.count end end end)
+            local fuel_min, nloc = nil, 0
+            pcall(function()
+                for _, grp in pairs({t.locomotives.front_movers, t.locomotives.back_movers}) do
+                    for _, lo in pairs(grp) do
+                        nloc = nloc + 1
+                        local inv = lo.get_fuel_inventory()
+                        local c = inv.get_item_count()
+                        if lo.burner and lo.burner.currently_burning then c = c + 0.5 end
+                        fuel_min = fuel_min and math.min(fuel_min, c) or c
+                        for _, it in pairs(inv.get_contents()) do fuel[it.name] = (fuel[it.name] or 0) + it.count end
+                    end
+                end
+            end)
             pcall(function() for _, i in pairs(t.get_schedule().get_interrupts()) do ints[#ints + 1] = i.name end end)
             table.insert(out.trains, {id = t.id, state = st[t.state] or tostring(t.state), manual = t.manual_mode,
                                       group = t.group or "", path_end_stop = pes, has_path = t.has_path, fuel = fuel,
+                                      fuel_min = fuel_min, locos = nloc,
                                       interrupts = ints,
                                       speed = t.speed, x = fr and fr.position.x, y = fr and fr.position.y,
                                       station = t.station and t.station.backer_name or "", schedule = recs,
@@ -362,6 +375,19 @@ storage.actions.rail_consist = function(player_index, x, y, d, spec, fuel_name, 
     local V = {[0] = {0, 1}, [4] = {-1, 0}, [8] = {0, -1}, [12] = {1, 0}}   -- "behind" the front
     local v = V[d]
     if not v then error("\"rails consist: direction must be 0/4/8/12\"") end
+    -- fuel_count is the TOTAL: split evenly over every locomotive (the rear one pulls on the way back)
+    local nloco = 0
+    for _, nm in ipairs(seq) do if nm ~= "cargo-wagon" then nloco = nloco + 1 end end
+    local per = 0
+    if fuel_name and fuel_name ~= "" and (tonumber(fuel_count) or 0) > 0 and nloco > 0 then
+        local have = player.get_item_count(fuel_name)
+        local total = math.min(have, tonumber(fuel_count))
+        per = math.floor(total / nloco)
+        if per < 20 then
+            error("\"rails consist: " .. nloco .. " locomotives need at least 20 " .. fuel_name .. " each: pass fuel_count>=" ..
+                  (20 * nloco) .. " (the TOTAL, split evenly) and hold that many (the character holds " .. have .. ")\"")
+        end
+    end
     local made, tid = {}, -1
     for i, nm in ipairs(seq) do
         local name, dir = nm, d
@@ -373,13 +399,15 @@ storage.actions.rail_consist = function(player_index, x, y, d, spec, fuel_name, 
         player.remove_item{name = name, count = 1}
         if name == "locomotive" and fuel_name and fuel_name ~= "" then
             local inv = e.get_fuel_inventory()
-            local n = math.min(player.get_item_count(fuel_name), tonumber(fuel_count) or 0)
+            local n = math.min(player.get_item_count(fuel_name), per)
             if inv and n > 0 then
                 local got = inv.insert{name = fuel_name, count = n}
                 if got > 0 then player.remove_item{name = fuel_name, count = got} end
             end
         end
-        made[#made + 1] = {n = name, x = e.position.x, y = e.position.y}
+        local fu = nil
+        if name == "locomotive" then pcall(function() fu = e.get_fuel_inventory().get_item_count() end) end
+        made[#made + 1] = {n = name, x = e.position.x, y = e.position.y, fuel = fu}
         tid = e.train and e.train.id or tid
     end
     local t = nil

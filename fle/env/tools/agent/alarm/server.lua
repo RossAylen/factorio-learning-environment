@@ -168,7 +168,39 @@ A.low = function(player, spec)
     return {id = id, units = units, speaker = {s.position.x, s.position.y}, powered = s.is_connected_to_electric_network()}
 end
 
+-- train_fuel: locomotives have no circuit output for fuel, so this one is checked when alarms are
+-- read (no per-tick cost); a firing one is also pushed as a custom alert to connected players
+A.train_fuel = function(player, spec)
+    local id = #storage.alarms + 1
+    storage.alarms[id] = {id = id, kind = "train_fuel", text = spec.text or "TRAIN FUEL", cond = "train_fuel", n = spec.n or 10,
+                          train = spec.train}
+    return {id = id, units = {}, speaker = nil, powered = true}
+end
+
+local function train_fuel_state(a)
+    local low = {}
+    for _, t in pairs(game.train_manager.get_trains{surface = game.surfaces[1]}) do
+        if not a.train or a.train == t.id then
+            for _, grp in pairs({t.locomotives.front_movers, t.locomotives.back_movers}) do
+                for _, lo in pairs(grp) do
+                    local c = lo.get_fuel_inventory().get_item_count()
+                    if c < (a.n or 10) then low[#low + 1] = {t.id, lo.position.x, lo.position.y, c, lo} end
+                end
+            end
+        end
+    end
+    local first = low[1]
+    if first then
+        for _, pl in pairs(game.connected_players) do
+            pcall(function() pl.add_custom_alert(first[5], {type = "item", name = "coal"}, (a.text or "TRAIN FUEL") .. ": train " .. first[1] .. " loco has " .. first[4], true) end)
+        end
+    end
+    return {id = a.id, kind = a.kind, text = a.text, x = first and first[2] or 0, y = first and first[3] or 0,
+            active = first ~= nil, value = first and ("train " .. first[1] .. " loco fuel " .. first[4] .. " (" .. #low .. " low)") or nil, powered = true}
+end
+
 local function state(a)
+    if a.cond == "train_fuel" then return train_fuel_state(a) end
     local s = a.speaker
     if not (s and s.valid) then return nil end
     local net = s.get_circuit_network(R)
