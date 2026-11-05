@@ -70,6 +70,23 @@ B.area = function(player, spec)
     return {e = out, tick = game.tick}
 end
 
+-- items on belt tiles: spec.tiles = [[x, y], ...] -> {items = {name = count}, first = {name = [x, y]}}
+B.belt_items = function(player, spec)
+    local items, first = {}, {}
+    for _, t in ipairs(spec.tiles or {}) do
+        for _, e in pairs(player.surface.find_entities_filtered{position = {t[1], t[2]}, radius = 0.4,
+                type = {"transport-belt", "underground-belt", "splitter"}}) do
+            for li = 1, e.get_max_transport_line_index() do
+                for _, it in pairs(e.get_transport_line(li).get_contents()) do
+                    items[it.name] = (items[it.name] or 0) + it.count
+                    if not first[it.name] then first[it.name] = {e.position.x, e.position.y} end
+                end
+            end
+        end
+    end
+    return {items = items, first = first}
+end
+
 -- single ghosts: [{n, x, y, d, recipe?, type?}]
 B.ghost = function(player, spec)
     local n = 0
