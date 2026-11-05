@@ -15,7 +15,7 @@ class FlowRead(Tool):
         if isinstance(response, str) and "FLOWHEX_" in response:
             hx = "".join(ch for ch in response.split("FLOWHEX_", 1)[1] if ch in "0123456789abcdef")
             out = json.loads(bytes.fromhex(hx).decode())
-            for k in ("machines", "inserters", "belts"):
+            for k in ("machines", "inserters", "belts", "chests"):
                 if isinstance(out.get(k), dict):
                     out[k] = list(out[k].values())
             return out

@@ -32,7 +32,20 @@ F.graph = function(player, spec)
         local r = {u = m.unit_number, n = m.name, t = m.type, x = m.position.x, y = m.position.y, s = ST[m.status]}
         local speed = 1
         pcall(function() speed = m.crafting_speed end)
-        if m.type == "mining-drill" then
+        if m.type == "lab" then
+            -- every pack of the current research at the research rate
+            local cr = force.current_research
+            if cr then
+                local spd = 1
+                pcall(function() spd = m.prototype.get_researching_speed and m.prototype.get_researching_speed() or m.prototype.researching_speed or 1 end)
+                pcall(function() spd = spd * (1 + (force.laboratory_speed_modifier or 0)) end)
+                local ut = 30
+                pcall(function() ut = (cr.research_unit_energy or 1800) / 60 end)
+                r.i = {}
+                for _, ing in pairs(cr.research_unit_ingredients) do r.i[ing.name] = ing.amount * spd / ut end
+                r.r = "research:" .. cr.name
+            end
+        elseif m.type == "mining-drill" then
             pcall(function() speed = m.prototype.mining_speed end)
             local res = surf.find_entities_filtered{area = m.mining_area, type = "resource", limit = 1}[1]
             if res then
@@ -56,6 +69,12 @@ F.graph = function(player, spec)
         local bb = m.bounding_box
         r.bb = {bb.left_top.x, bb.left_top.y, bb.right_bottom.x, bb.right_bottom.y}
         out.machines[#out.machines + 1] = r
+    end
+    out.chests = {}
+    for _, c in pairs(surf.find_entities_filtered{area = area, force = force, type = {"container", "logistic-container"}}) do
+        local inv = {}
+        pcall(function() for _, it in pairs(c.get_inventory(defines.inventory.chest).get_contents()) do inv[it.name] = it.count end end)
+        out.chests[#out.chests + 1] = {u = c.unit_number, n = c.name, x = c.position.x, y = c.position.y, inv = inv}
     end
     for _, i in pairs(surf.find_entities_filtered{area = area, force = force, type = "inserter"}) do
         local stack = 1

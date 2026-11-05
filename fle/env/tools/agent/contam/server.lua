@@ -97,6 +97,44 @@ A.injectors = function(player, spec)
     end
     return {injectors = out}
 end
+-- every entry point onto a line: inserters dropping on any of spec.tiles, and belts/undergrounds/
+-- splitters not on the line that feed into one of its tiles (side-loads)
+A.line_injectors = function(player, spec)
+    local surf = player.surface
+    local on = {}
+    for _, t in ipairs(spec.tiles or {}) do on[math.floor(t[1]) .. "," .. math.floor(t[2])] = true end
+    local out, seen = {}, {}
+    local DV = {[0] = {0, -1}, [4] = {1, 0}, [8] = {0, 1}, [12] = {-1, 0}}
+    for _, t in ipairs(spec.tiles or {}) do
+        local x, y = t[1], t[2]
+        for _, i in pairs(surf.find_entities_filtered{position = {x, y}, radius = 2.6, type = "inserter"}) do
+            local dp = i.drop_position
+            if dp and on[math.floor(dp.x) .. "," .. math.floor(dp.y)] and not seen[i.unit_number] then
+                seen[i.unit_number] = true
+                local pt = i.pickup_target
+                out[#out + 1] = {k = "inserter", n = i.name, x = i.position.x, y = i.position.y, onto = {math.floor(dp.x) + 0.5, math.floor(dp.y) + 0.5},
+                                 from = pt and (pt.name .. "@" .. pt.position.x .. "," .. pt.position.y) or nil}
+            end
+        end
+        for _, b in pairs(surf.find_entities_filtered{area = {{x - 1.4, y - 1.4}, {x + 1.4, y + 1.4}}, type = {"transport-belt", "underground-belt", "splitter"}}) do
+            local k = math.floor(b.position.x) .. "," .. math.floor(b.position.y)
+            local dv = DV[b.direction]
+            if dv and not on[k] and not seen[b.unit_number] then
+                local outputs = b.type ~= "underground-belt" or b.belt_to_ground_type == "output"
+                if outputs and math.abs(b.position.x + dv[1] - x) < 0.6 and math.abs(b.position.y + dv[2] - y) < 0.6 then
+                    seen[b.unit_number] = true
+                    local items = {}
+                    for li = 1, math.min(2, b.get_max_transport_line_index()) do
+                        for _, it in pairs(b.get_transport_line(li).get_contents()) do items[it.name] = (items[it.name] or 0) + it.count end
+                    end
+                    out[#out + 1] = {k = b.type .. " side-load", n = b.name, x = b.position.x, y = b.position.y, onto = {x, y}, carries = items}
+                end
+            end
+        end
+    end
+    return {injectors = out}
+end
+
 -- filter the inserters given (spec.ins = [[x, y], ...]) to spec.items (2.x: every non-burner inserter filters)
 A.filter_inserters = function(player, spec)
     local n, failed = 0, {}
