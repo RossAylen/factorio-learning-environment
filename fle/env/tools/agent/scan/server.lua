@@ -15,12 +15,24 @@ storage.actions.scan = function(player_index, names_hex, x, y, radius, limit)
         for _, it in pairs(inv.get_contents()) do out[it.name] = (out[it.name] or 0) + it.count end
         return out
     end
+    local live_nets = {}
     local out = {}
     for _, e in pairs(surface.find_entities_filtered{position = {tonumber(x), tonumber(y)}, radius = tonumber(radius),
                                                      name = names, force = player.force}) do
         if #out >= limit then break end
         local r = {n = e.name, x = e.position.x, y = e.position.y}
-        if e.type == "electric-pole" then r.net = e.electric_network_id end
+        if e.type == "electric-pole" then
+            r.net = e.electric_network_id
+            local lv = live_nets[r.net]
+            if lv == nil then
+                lv = false
+                pcall(function()
+                    for _, c in pairs(e.electric_network_statistics.input_counts) do if c > 0 then lv = true break end end
+                end)
+                live_nets[r.net] = lv
+            end
+            r.live = lv
+        end
         local s = e.status and st[e.status]
         if s then r.s = s end
         if e.type == "container" or e.type == "logistic-container" then
