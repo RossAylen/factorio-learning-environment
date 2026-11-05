@@ -71,6 +71,28 @@ B.area = function(player, spec)
                 pcall(function() nb = storage.neighbours and storage.neighbours(e) or nil end)
                 if nb and nb.valid then r.px, r.py = nb.position.x, nb.position.y end
             end
+            if e.type == "splitter" then
+                pcall(function()
+                    local f = e.splitter_filter
+                    if f then r.sf = (type(f) == "string" and f) or f.name end
+                    if type(r.sf) ~= "string" then r.sf = nil end
+                    if e.splitter_output_priority ~= "none" then r.sp = e.splitter_output_priority end
+                    if e.splitter_input_priority ~= "none" then r.si = e.splitter_input_priority end
+                end)
+            end
+            if e.type == "inserter" then
+                pcall(function()
+                    if e.use_filters then
+                        local fs = {}
+                        for i = 1, e.filter_slot_count do
+                            local f = e.get_filter(i)
+                            local nm = f and ((type(f) == "string" and f) or f.name)
+                            if type(nm) == "string" then fs[#fs + 1] = nm end
+                        end
+                        if #fs > 0 then r.f = fs r.fm = e.inserter_filter_mode end
+                    end
+                end)
+            end
             if spec.items and (e.type == "transport-belt" or e.type == "underground-belt" or e.type == "splitter") then
                 local lanes = {}
                 for li = 1, math.min(2, e.get_max_transport_line_index()) do

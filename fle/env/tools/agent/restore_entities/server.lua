@@ -1,6 +1,7 @@
 -- restore_entities: re-place entities from a plan (e.g. a base snapshot) that are missing,
 -- using items from the character's inventory, exactly like place_entity would.
--- plan entries (hex JSON list): {n=name, x, y, d=direction, t=input/output, r=recipe}
+-- plan entries (hex JSON list): {n=name, x, y, d=direction, t=input/output, r=recipe,
+--   sf/sp/si = splitter filter / output / input priority, f = inserter filters (fm = whitelist/blacklist)}
 storage.actions.restore_entities = function(player_index, plan_hex, dry_run)
     local player = storage.agent_characters[player_index]
     local surface = player.surface
@@ -36,6 +37,20 @@ storage.actions.restore_entities = function(player_index, plan_hex, dry_run)
                         if e then
                             player.remove_item({name = iname, count = 1})
                             if p.r and e.type == "assembling-machine" then pcall(function() e.set_recipe(p.r) end) end
+                            if e.type == "splitter" then
+                                pcall(function()
+                                    if p.sf then if not pcall(function() e.splitter_filter = {name = p.sf} end) then e.splitter_filter = p.sf end end
+                                    if p.sp then e.splitter_output_priority = p.sp end
+                                    if p.si then e.splitter_input_priority = p.si end
+                                end)
+                            end
+                            if p.f and e.type == "inserter" then
+                                pcall(function()
+                                    e.use_filters = true
+                                    if p.fm then e.inserter_filter_mode = p.fm end
+                                    for i, nm in ipairs(p.f) do if i <= e.filter_slot_count then e.set_filter(i, nm) end end
+                                end)
+                            end
                             placed = placed + 1
                             storage.elapsed_ticks = storage.elapsed_ticks +
                                 storage.utils.calculate_movement_ticks(player, last, {x = p.x, y = p.y})
