@@ -251,7 +251,8 @@ B.enemy_reach = function(player, spec)
             local ap = e.prototype.attack_parameters
             if ap and ap.range then range = ap.range end
         end)
-        out[#out + 1] = {n = e.name, x = e.position.x, y = e.position.y, k = e.type, range = range}
+        out[#out + 1] = {n = e.name, x = e.position.x, y = e.position.y, k = e.type, range = range,
+                         hp = e.health, max_hp = e.max_health}
     end
     return {e = out}
 end

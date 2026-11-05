@@ -37,7 +37,11 @@ script.on_nth_tick(60, function(ev)
     local C = storage.contam
     if not C or #C.lines == 0 then return end
     local surf = game.surfaces[1]
-    local n = math.min(#C.lines, 8)   -- 8 lines x ~4 tiles per check: well under 2 ms
+    -- defence (ammo) belts every pass, then 8 others round robin: well under 2 ms
+    for _, L in ipairs(C.lines) do
+        if string.find(L.id or "", "(defence)", 1, true) then pcall(check_line, surf, L) end
+    end
+    local n = math.min(#C.lines, 8)
     for _ = 1, n do
         if C.next > #C.lines then C.next = 1 end
         pcall(check_line, surf, C.lines[C.next])
