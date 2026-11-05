@@ -45,6 +45,14 @@ F.graph = function(player, spec)
                 for _, ing in pairs(cr.research_unit_ingredients) do r.i[ing.name] = ing.amount * spd / ut end
                 r.r = "research:" .. cr.name
             end
+            pcall(function()   -- the packs the lab holds (LABS STARVED names the missing one)
+                local inv = m.get_inventory(defines.inventory.lab_input)
+                if inv then
+                    local c = {}
+                    for _, it in pairs(inv.get_contents()) do c[it.name] = (c[it.name] or 0) + it.count end
+                    r.inv = c
+                end
+            end)
         elseif m.type == "mining-drill" then
             pcall(function() speed = m.prototype.mining_speed end)
             local res = surf.find_entities_filtered{area = m.mining_area, type = "resource", limit = 1}[1]
