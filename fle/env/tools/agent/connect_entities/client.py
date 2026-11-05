@@ -48,7 +48,7 @@ from collections.abc import Set as AbstractSet
 
 
 
-def _route_radius(entities, source_pos, margin=3.0, cap=300.0):
+def _route_radius(entities, source_pos, margin=3.0, cap=40.0):
     """Radius around source_pos that covers the entities just placed: the group re-read after a
     connection used get_entities' default radius 1000 - every belt/pole of the base serialised in
     one tick (72 s on the live base)."""
