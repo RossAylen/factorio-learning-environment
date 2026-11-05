@@ -167,6 +167,31 @@ B.tech = function(player, spec)
     return out
 end
 
+-- LAB ONLY (the caller refuses on the live instance): infinity sources / voids for measuring designs.
+-- spec.kind = "item" (spec.item, spec.n per refill) | "fluid" (spec.fluid, spec.temperature) | "void" | "void_fluid"
+B.infinity = function(player, spec)
+    local s = player.surface
+    local pos = {spec.x, spec.y}
+    if spec.kind == "item" or spec.kind == "void" then
+        local c = s.create_entity{name = "infinity-chest", position = pos, force = player.force, raise_built = true}
+        if not c then error('"bots infinity: no room for an infinity chest at ' .. spec.x .. ',' .. spec.y .. '"') end
+        if spec.kind == "item" then
+            c.set_infinity_container_filter(1, {name = spec.item, count = spec.n or 100, mode = "exactly"})
+        else
+            c.remove_unfiltered_items = true
+        end
+        return {name = c.name, x = c.position.x, y = c.position.y, kind = spec.kind}
+    end
+    local p = s.create_entity{name = "infinity-pipe", position = pos, force = player.force, raise_built = true}
+    if not p then error('"bots infinity: no room for an infinity pipe at ' .. spec.x .. ',' .. spec.y .. '"') end
+    if spec.kind == "fluid" then
+        p.set_infinity_pipe_filter{name = spec.fluid, percentage = 1.0, mode = "exactly", temperature = spec.temperature}
+    else
+        p.set_infinity_pipe_filter{name = spec.fluid or "water", percentage = 0.0, mode = "exactly"}
+    end
+    return {name = p.name, x = p.position.x, y = p.position.y, kind = spec.kind}
+end
+
 -- spec.pi, spec.clear: the units this agent created during the current transaction (still alive)
 B.txn = function(player, spec)
     storage.txn_units = storage.txn_units or {}
