@@ -114,7 +114,9 @@ B.belt_purge = function(player, spec)
                 type = {"transport-belt", "underground-belt", "splitter"}}) do
             for li = 1, e.get_max_transport_line_index() do
                 local line = e.get_transport_line(li)
-                for _, it in pairs(line.get_contents()) do
+                -- spec.lane = 1 | 2: only that lane (splitters/undergrounds: lanes 1,3,.. / 2,4,..)
+                local lane_ok = (not spec.lane) or ((li - 1) % 2 + 1 == tonumber(spec.lane))
+                for _, it in pairs(lane_ok and line.get_contents() or {}) do
                     if not keep[it.name] then
                         local n = player.insert{name = it.name, count = it.count, quality = it.quality}
                         if n > 0 then
