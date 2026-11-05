@@ -56,7 +56,9 @@ end
 -- our entities in an area with what a blueprint diff needs: [{n, x, y, d (rotatable only), r (recipe), u (unit)}]
 B.area = function(player, spec)
     local out = {}
-    for _, e in pairs(player.surface.find_entities_filtered{area = {{spec.x0, spec.y0}, {spec.x1, spec.y1}}, force = player.force}) do
+    local f = {area = {{spec.x0, spec.y0}, {spec.x1, spec.y1}}, force = player.force}
+    if spec.names then f.name = spec.names end
+    for _, e in pairs(player.surface.find_entities_filtered(f)) do
         if e.valid and e.type ~= "character" and e.type ~= "entity-ghost" and e.unit_number then
             local r = {n = e.name, x = e.position.x, y = e.position.y, u = e.unit_number}
             if e.supports_direction then r.d = e.direction end
@@ -64,6 +66,15 @@ B.area = function(player, spec)
                 pcall(function() local rc = e.get_recipe() if rc then r.r = rc.name end end)
             end
             if e.type == "underground-belt" then r.t = e.belt_to_ground_type end
+            if spec.items and (e.type == "transport-belt" or e.type == "underground-belt" or e.type == "splitter") then
+                local lanes = {}
+                for li = 1, math.min(2, e.get_max_transport_line_index()) do
+                    local c = {}
+                    for _, it in pairs(e.get_transport_line(li).get_contents()) do c[it.name] = (c[it.name] or 0) + it.count end
+                    lanes[li] = c
+                end
+                r.l = lanes
+            end
             out[#out + 1] = r
         end
     end
