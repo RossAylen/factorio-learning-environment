@@ -8,6 +8,108 @@ local B = {}
 
 -- transaction tracking: controller.TXN brackets each tool call with a scan and appends new units
 -- to storage.txn_units[pi]
+-- fluid probe (2.1 API, all pcall'd): spec.x, spec.y -> the entity there (name, status, recipe, every
+-- fluid box: contents, capacity, filter, production type, segment id + segment contents, connections
+-- with their targets); spec.x0..y1 -> every fluid entity in the area grouped by segment
+-- (count, span, contents, statuses)
+local function fb_info(e)
+    local out = {}
+    local fb = nil
+    pcall(function() fb = storage.fb and storage.fb(e) or e.fluidbox end)
+    if not fb then return out end
+    for i = 1, #fb do
+        local r = {i = i}
+        pcall(function() local f = fb[i] if f then r.fluid, r.amount = f.name, math.floor(f.amount * 10) / 10 end end)
+        pcall(function() r.cap = fb.get_capacity(i) end)
+        pcall(function() local f = fb.get_filter(i) if f then r.filter = f.name end end)
+        pcall(function() local pr = fb.get_prototype(i) pr = pr[1] or pr r.ptype = pr.production_type end)
+        pcall(function() r.seg = fb.get_fluid_segment_id(i) end)
+        pcall(function()
+            local ns = {}
+            for _, c in pairs(fb.get_connections(i)) do ns[#ns + 1] = {c.owner.name, c.owner.position.x, c.owner.position.y} end
+            r.nb = ns
+        end)
+        pcall(function()
+            local c = fb.get_fluid_segment_contents(i)
+            if c then local t = {} for k, v in pairs(c) do t[k] = math.floor(v) end r.seg_contents = t end
+        end)
+        pcall(function()
+            local cs = {}
+            for _, c in pairs(fb.get_pipe_connections(i)) do
+                local t = {x = c.target_position and c.target_position.x, y = c.target_position and c.target_position.y,
+                           type = c.connection_type, flow = c.flow_direction}
+                if c.target then
+                    pcall(function() t.to = c.target.owner.name t.tx, t.ty = c.target.owner.position.x, c.target.owner.position.y end)
+                end
+                cs[#cs + 1] = t
+            end
+            r.conn = cs
+        end)
+        out[#out + 1] = r
+    end
+    return out
+end
+local SN = {}
+for k, v in pairs(defines.entity_status) do SN[v] = k end
+B.fluid_probe = function(player, spec)
+    local s = player.surface
+    if spec.x then
+        local es = s.find_entities_filtered{position = {spec.x, spec.y}, radius = spec.radius or 0.7, force = player.force}
+        local out = {}
+        for _, e in pairs(es) do
+            if e.type ~= "character" then
+                local r = {n = e.name, t = e.type, x = e.position.x, y = e.position.y, d = e.direction, status = SN[e.status] }
+                pcall(function() local rc = e.get_recipe() if rc then r.recipe = rc.name end end)
+                pcall(function() r.mirror = e.mirroring end)
+                r.boxes = fb_info(e)
+                out[#out + 1] = r
+            end
+        end
+        return {at = out}
+    end
+    local segs = {}
+    for _, e in pairs(s.find_entities_filtered{area = {{spec.x0, spec.y0}, {spec.x1, spec.y1}}, force = player.force,
+            type = {"pipe", "pipe-to-ground", "pump", "storage-tank", "offshore-pump", "mining-drill", "assembling-machine",
+                    "oil-refinery", "chemical-plant", "boiler", "generator", "fluid-turret", "furnace"}}) do
+        local fb = nil
+        pcall(function() fb = storage.fb and storage.fb(e) or e.fluidbox end)
+        if fb then
+            for i = 1, #fb do
+                local id = nil
+                pcall(function() id = fb.get_fluid_segment_id(i) end)
+                if id and spec.seg and id == spec.seg then
+                    local ns = {}
+                    pcall(function() for _, c in pairs(fb.get_connections(i)) do ns[#ns + 1] = {c.owner.position.x, c.owner.position.y} end end)
+                    segs.__list = segs.__list or {}
+                    segs.__list[#segs.__list + 1] = {n = e.name, x = e.position.x, y = e.position.y, nb = ns}
+                end
+                if id then
+                    local g = segs[id]
+                    if not g then
+                        g = {id = id, n = 0, x0 = e.position.x, y0 = e.position.y, x1 = e.position.x, y1 = e.position.y, names = {}, status = {}}
+                        pcall(function()
+                            local c = fb.get_fluid_segment_contents(i)
+                            if c then local t = {} for k, v in pairs(c) do t[k] = math.floor(v) end g.contents = t end
+                        end)
+                        segs[id] = g
+                    end
+                    g.n = g.n + 1
+                    g.x0, g.y0 = math.min(g.x0, e.position.x), math.min(g.y0, e.position.y)
+                    g.x1, g.y1 = math.max(g.x1, e.position.x), math.max(g.y1, e.position.y)
+                    g.names[e.name] = (g.names[e.name] or 0) + 1
+                    local st = SN[e.status] or "none"
+                    g.status[st] = (g.status[st] or 0) + 1
+                end
+            end
+        end
+    end
+    local out = {}
+    local list = segs.__list
+    segs.__list = nil
+    for _, g in pairs(segs) do out[#out + 1] = g end
+    return {segments = out, entities = list}
+end
+
 -- spec.pi, spec.clear: the units this agent created during the current transaction (still alive)
 B.txn = function(player, spec)
     storage.txn_units = storage.txn_units or {}

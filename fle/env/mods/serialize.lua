@@ -1023,8 +1023,15 @@ storage.utils.serialize_entity = function(entity)
 
     -- Add input and output locations if the entity is a pump
     if entity.type == "pump" then
-        serialized.input_position = storage.fb(entity).get_connections(1)[1].position
-        serialized.output_position = storage.fb(entity).get_connections(2)[1].position
+        -- 2.x: a pump has ONE fluid box with an input and an output pipe connection (index 2 does not
+        -- exist: "Fluid index 2 is out of bounds"); read both from its pipe connections
+        pcall(function()
+            for _, c in pairs(storage.fb(entity).get_pipe_connections(1) or {}) do
+                local pos = c.target_position or c.position
+                if c.flow_direction == "input" then serialized.input_position = pos
+                elseif c.flow_direction == "output" then serialized.output_position = pos end
+            end
+        end)
     end
 
     -- Add the current research to the lab
