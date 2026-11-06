@@ -873,6 +873,25 @@ B.network = function(player, spec)
     return out
 end
 
+-- equip the character from its main inventory: spec.gun / spec.ammo (+ammo_count) / spec.armor -> the gun, ammo, armor slots
+B.equip = function(player, spec)
+    local main = player.get_main_inventory()
+    local out = {}
+    local function mv(name, count, inv_id, label)
+        if not name then return end
+        local dst = player.get_inventory(inv_id)
+        local n = math.min(count or 1, main.get_item_count(name))
+        if n <= 0 then out[label] = 0; return end
+        local ins = dst.insert{name = name, count = n}
+        if ins > 0 then main.remove{name = name, count = ins} end
+        out[label] = ins
+    end
+    mv(spec.gun, 1, defines.inventory.character_guns, "gun")
+    mv(spec.ammo, spec.ammo_count or 40, defines.inventory.character_ammo, "ammo")
+    mv(spec.armor, 1, defines.inventory.character_armor, "armor")
+    return out
+end
+
 storage.actions.bots = function(player_index, op, spec_hex)
     local player = storage.agent_characters[player_index]
     local f = B[op]
