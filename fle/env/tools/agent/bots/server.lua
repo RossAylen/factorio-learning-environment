@@ -172,6 +172,31 @@ end
 B.infinity = function(player, spec)
     local s = player.surface
     local pos = {spec.x, spec.y}
+    if spec.kind == "power" then
+        local e = s.create_entity{name = "electric-energy-interface", position = pos, force = player.force, raise_built = true}
+        if not e then error("bots infinity: no room for an energy interface") end
+        e.power_production = 1e9
+        e.electric_buffer_size = 1e10
+        local placed, missed = 0, 0
+        local offs = {{0,0},{1,0},{0,1},{-1,0},{0,-1},{2,0},{0,2},{-2,0},{0,-2},{2,2},{-2,-2},{2,-2},{-2,2}}
+        local function sub(x, y)
+            for _, d in ipairs(offs) do
+                local q = {x + d[1], y + d[2]}
+                if s.can_place_entity{name = "substation", position = q, force = player.force} then
+                    s.create_entity{name = "substation", position = q, force = player.force, raise_built = true}
+                    placed = placed + 1
+                    return
+                end
+            end
+            missed = missed + 1
+        end
+        sub(spec.x + 3, spec.y)
+        local x0, y0, x1, y1 = spec.x0 or spec.x, spec.y0 or spec.y, spec.x1 or spec.x, spec.y1 or spec.y
+        for x = x0, x1 + 9, 16 do
+            for y = y0, y1 + 9, 16 do sub(x, y) end
+        end
+        return {name = e.name, x = e.position.x, y = e.position.y, kind = "power", substations = placed, missed = missed}
+    end
     if spec.kind == "item" or spec.kind == "void" then
         local c = s.create_entity{name = "infinity-chest", position = pos, force = player.force, raise_built = true}
         if not c then error('"bots infinity: no room for an infinity chest at ' .. spec.x .. ',' .. spec.y .. '"') end
