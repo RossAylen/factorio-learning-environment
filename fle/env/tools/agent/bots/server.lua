@@ -162,7 +162,18 @@ B.tech = function(player, spec)
         local t = f.technologies[spec.tech]
         out.tech_exists = t ~= nil
         out.researched = t ~= nil and t.researched or false
-        if t then out.level = t.level end
+        if t then
+            out.level = t.level
+            local pre = {}
+            for n, _ in pairs(t.prerequisites) do pre[#pre + 1] = n end
+            out.prerequisites = pre
+            local ing = {}
+            for _, i in ipairs(t.research_unit_ingredients) do ing[#ing + 1] = i.name end
+            out.ingredients = ing
+            local rt = t.prototype.research_trigger
+            out.trigger = rt and (rt.type .. (rt.item and (":" .. tostring(rt.item.name or rt.item)) or "")) or nil
+            out.enabled_tech = t.enabled
+        end
     end
     return out
 end
